@@ -134,7 +134,8 @@
   "auth": {
     "providers": [
       "password",
-      "anonymous"
+      "anonymous",
+      "google.com"
     ]
   },
   "firestore": {
@@ -182,7 +183,7 @@
           "schema": {
             "$ref": "#/backend/entities/SessionMessage"
           },
-          "description": "Stores messages exchanged within a specific coaching session. CRITICAL: Includes a denormalized `userId` field (copied from the parent user) to ensure Authorization Independence without requiring `get()` calls to parent collections. Access is restricted to the user whose `uid` matches the denormalized `userId`.",
+          "description": "Stores messages exchanged within a specific coaching session. Access is restricted to the user whose `uid` matches the denormalized `userId`.",
           "params": [
             {
               "name": "userId",
@@ -200,6 +201,6 @@
         }
       }
     ],
-    "reasoning": "The recommended Firestore structure is based on a hierarchical, user-centric model that prioritizes data segregation and authorization independence. All user-specific data is nested under a top-level `/users/{userId}` collection, where `{userId}` directly corresponds to the authenticated user's `uid`.\n\n1.  **UserProfile:** Stored at `/users/{userId}`, where the document ID `userId` matches `request.auth.uid`. This provides direct path-based ownership, making security rules simple: `allow read, write: if request.auth.uid == userId;`.\n\n2.  **CoachingSession:** Stored as a subcollection at `/users/{userId}/coachingSessions/{sessionId}`. Each `CoachingSession` document includes a `userId` field which holds the ID of the owning user. This field is consistent with the `{userId}` wildcard in the path, reinforcing ownership and supporting authorization checks without requiring `get()` operations on the parent `UserProfile` document. This adheres to Authorization Independence.\n\n3.  **SessionMessage:** Stored as a subcollection at `/users/{userId}/coachingSessions/{sessionId}/sessionMessages/{messageId}`. To ensure **Authorization Independence (CRITICAL)** and simplify security rules, each `SessionMessage` document **must include a denormalized `userId` field**, copied from its grandparent `UserProfile` (or parent `CoachingSession`). This allows security rules at the `sessionMessages` level to check `request.auth.uid == resource.data.userId` directly, completely avoiding expensive and non-atomic `get()` calls to parent documents like `coachingSessions` or `users`. This is fundamental for robust and debuggable security.\n\n**QAPs (Queryable Access Patterns) Support:**\nThis structure naturally enables secure `list` operations. Because all user-specific data is strictly partitioned under `/users/{userId}`, any `list` query from the client for `coachingSessions` or `sessionMessages` will automatically be scoped by the `request.auth.uid` in the path. Security rules can enforce that the `{userId}` in the path matches `request.auth.uid`, ensuring that users can only query their own data. The denormalized `userId` field in `CoachingSession` and `SessionMessage` documents further allows for efficient, server-side filtering and robust rule enforcement for all read and write operations, directly supporting QAPs by ensuring rules are not acting as filters but as access enforcers on well-defined data scopes."
+    "reasoning": "Standard user-centric Firestore hierarchy."
   }
 }

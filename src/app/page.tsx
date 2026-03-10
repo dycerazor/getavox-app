@@ -1,6 +1,22 @@
-
-import { MascotCoach } from '@/components/coach/MascotCoach';
+import dynamic from 'next/dynamic';
 import { BrainCircuit, ShieldCheck, Zap, Sparkles } from 'lucide-react';
+import { AuthButton } from '@/components/auth/AuthButton';
+
+// Dynamic import for client-only component that uses browser APIs (simli-client)
+const MascotCoach = dynamic(
+  () => import('@/components/coach/MascotCoach').then((mod) => mod.MascotCoach),
+  { 
+    ssr: false,
+    loading: () => (
+      <div className="w-full max-w-4xl aspect-video bg-slate-900 rounded-2xl flex items-center justify-center border-4 border-white/10 shadow-2xl">
+        <div className="flex flex-col items-center gap-4">
+          <BrainCircuit className="w-12 h-12 text-accent animate-pulse" />
+          <p className="text-slate-400 font-medium">Loading AI Coach...</p>
+        </div>
+      </div>
+    )
+  }
+);
 
 export default function Home() {
   return (
@@ -21,7 +37,7 @@ export default function Home() {
             <a href="#" className="hover:text-primary transition-colors">Pricing</a>
             <a href="#" className="hover:text-primary transition-colors">Resources</a>
             <div className="h-4 w-[1px] bg-slate-200"></div>
-            <button className="text-primary font-bold">Sign In</button>
+            <AuthButton />
           </nav>
         </div>
       </header>
@@ -36,7 +52,7 @@ export default function Home() {
           powered by Gemini for personalized, immediate feedback on your performance.
         </p>
         
-        {/* Main Interface */}
+        {/* Main Interface - Dynamically Loaded */}
         <MascotCoach />
       </section>
 
