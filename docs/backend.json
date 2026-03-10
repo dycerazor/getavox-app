@@ -1,10 +1,51 @@
 {
   "entities": {
+    "UserProfile": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "UserProfile",
+      "type": "object",
+      "description": "Stores profile information for users interacting with the AI coaching app, complementing an external authentication system by holding non-sensitive user data.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the UserProfile entity."
+        },
+        "email": {
+          "type": "string",
+          "description": "The user's email address.",
+          "format": "email"
+        },
+        "firstName": {
+          "type": "string",
+          "description": "The user's first name."
+        },
+        "lastName": {
+          "type": "string",
+          "description": "The user's last name."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the user profile was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the user profile was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "email",
+        "firstName",
+        "createdAt"
+      ]
+    },
     "CoachingSession": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "CoachingSession",
       "type": "object",
-      "description": "Represents a single interactive coaching session between a user and the AI coach. It tracks the lifecycle and key metadata of a session.",
+      "description": "Represents a single coaching session interaction between a user and the AI coach.",
       "properties": {
         "id": {
           "type": "string",
@@ -12,119 +53,81 @@
         },
         "userId": {
           "type": "string",
-          "description": "Reference to the user who initiated this coaching session, provided by an external authentication system. (Relationship: User 1:N CoachingSession)"
+          "description": "Reference to the UserProfile who participated in this session. (Relationship: UserProfile 1:N CoachingSession)"
         },
         "startTime": {
           "type": "string",
-          "description": "Timestamp when the coaching session officially started.",
+          "description": "The exact timestamp when the coaching session began.",
           "format": "date-time"
         },
         "endTime": {
           "type": "string",
-          "description": "Optional timestamp when the coaching session officially ended. This field is null for active or uncompleted sessions.",
+          "description": "The exact timestamp when the coaching session ended.",
           "format": "date-time"
+        },
+        "durationMinutes": {
+          "type": "number",
+          "description": "The total duration of the session in minutes."
         },
         "status": {
           "type": "string",
-          "description": "Current status of the coaching session (e.g., 'started', 'active', 'ended', 'error')."
+          "description": "The current or final status of the coaching session (e.g., 'started', 'completed', 'cancelled', 'failed')."
         },
-        "createdAt": {
+        "summary": {
           "type": "string",
-          "description": "Timestamp when this session record was initially created.",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "description": "Timestamp when this session record was last updated.",
-          "format": "date-time"
+          "description": "A brief, AI-generated summary or outcome of the coaching session."
         }
       },
       "required": [
         "id",
         "userId",
         "startTime",
-        "status",
-        "createdAt",
-        "updatedAt"
+        "status"
       ]
     },
-    "SessionTranscript": {
+    "SessionMessage": {
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "SessionTranscript",
+      "title": "SessionMessage",
       "type": "object",
-      "description": "Stores the overall metadata for the transcript associated with a specific coaching session.",
+      "description": "Stores individual messages or turns exchanged during a CoachingSession, capturing both user input and AI responses.",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the SessionTranscript entity."
+          "description": "Unique identifier for the SessionMessage entity."
         },
-        "coachingSessionId": {
+        "sessionId": {
           "type": "string",
-          "description": "Reference to the coaching session this transcript belongs to. (Relationship: CoachingSession 1:1 SessionTranscript)"
+          "description": "Reference to the CoachingSession this message belongs to. (Relationship: CoachingSession 1:N SessionMessage)"
         },
-        "createdAt": {
+        "sender": {
           "type": "string",
-          "description": "Timestamp when this transcript record was initially created.",
-          "format": "date-time"
+          "description": "Identifies the source of the message (e.g., 'user', 'ai')."
         },
-        "updatedAt": {
+        "contentType": {
           "type": "string",
-          "description": "Timestamp when this transcript record was last updated.",
+          "description": "The type of content in the message (e.g., 'text', 'audio')."
+        },
+        "textContent": {
+          "type": "string",
+          "description": "The textual content of the message, if applicable."
+        },
+        "audioUrl": {
+          "type": "string",
+          "description": "URL to the recorded audio content of the message, if applicable.",
+          "format": "uri"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "The exact timestamp when the message was sent or recorded.",
           "format": "date-time"
         }
       },
       "required": [
         "id",
-        "coachingSessionId",
-        "createdAt",
-        "updatedAt"
-      ]
-    },
-    "TranscriptEntry": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "TranscriptEntry",
-      "type": "object",
-      "description": "Represents a single spoken utterance or turn within a coaching session transcript, detailing who spoke what and when.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the TranscriptEntry entity."
-        },
-        "sessionTranscriptId": {
-          "type": "string",
-          "description": "Reference to the SessionTranscript this entry belongs to. (Relationship: SessionTranscript 1:N TranscriptEntry)"
-        },
-        "speaker": {
-          "type": "string",
-          "description": "Indicates who spoke this entry (e.g., 'User', 'AI Coach')."
-        },
-        "text": {
-          "type": "string",
-          "description": "The actual spoken text of the utterance."
-        },
-        "timestampOffsetMs": {
-          "type": "number",
-          "description": "Time offset in milliseconds from the start of the coaching session when this entry occurred."
-        },
-        "createdAt": {
-          "type": "string",
-          "description": "Timestamp when this transcript entry record was initially created.",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "description": "Timestamp when this transcript entry record was last updated.",
-          "format": "date-time"
-        }
-      },
-      "required": [
-        "id",
-        "sessionTranscriptId",
-        "speaker",
-        "text",
-        "timestampOffsetMs",
-        "createdAt",
-        "updatedAt"
+        "sessionId",
+        "sender",
+        "contentType",
+        "timestamp"
       ]
     }
   },
@@ -137,78 +140,66 @@
   "firestore": {
     "structure": [
       {
-        "path": "/users/{userId}/coachingSessions/{coachingSessionId}",
+        "path": "users/{userId}",
+        "definition": {
+          "entityName": "UserProfile",
+          "schema": {
+            "$ref": "#/backend/entities/UserProfile"
+          },
+          "description": "Stores individual user profiles. Access is strictly restricted to the user whose `uid` matches the `{userId}` path parameter.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique ID of the user, matching `request.auth.uid`."
+            }
+          ]
+        }
+      },
+      {
+        "path": "users/{userId}/coachingSessions/{sessionId}",
         "definition": {
           "entityName": "CoachingSession",
           "schema": {
             "$ref": "#/backend/entities/CoachingSession"
           },
-          "description": "Stores individual coaching sessions initiated by a user. The 'userId' field in the document matches the '{userId}' path wildcard, establishing direct ownership.",
+          "description": "Stores individual coaching sessions for a specific user. Includes the `userId` field for authorization independence, allowing direct ownership checks. Access is restricted to the user whose `uid` matches the `{userId}` path parameter.",
           "params": [
             {
               "name": "userId",
-              "description": "The unique identifier of the user who owns the coaching session."
+              "description": "The unique ID of the user who owns this session, matching `request.auth.uid`."
             },
             {
-              "name": "coachingSessionId",
-              "description": "The unique identifier for the specific coaching session."
+              "name": "sessionId",
+              "description": "The unique ID of the coaching session."
             }
           ]
         }
       },
       {
-        "path": "/users/{userId}/coachingSessions/{coachingSessionId}/sessionTranscripts/{sessionTranscriptId}",
+        "path": "users/{userId}/coachingSessions/{sessionId}/sessionMessages/{messageId}",
         "definition": {
-          "entityName": "SessionTranscript",
+          "entityName": "SessionMessage",
           "schema": {
-            "$ref": "#/backend/entities/SessionTranscript"
+            "$ref": "#/backend/entities/SessionMessage"
           },
-          "description": "Stores the metadata for a transcript belonging to a specific coaching session. Includes denormalized 'userId' and 'coachingSessionId' fields for authorization independence, allowing direct ownership checks without referencing parent documents.",
+          "description": "Stores messages exchanged within a specific coaching session. CRITICAL: Includes a denormalized `userId` field (copied from the parent user) to ensure Authorization Independence without requiring `get()` calls to parent collections. Access is restricted to the user whose `uid` matches the denormalized `userId`.",
           "params": [
             {
               "name": "userId",
-              "description": "The unique identifier of the user who owns the parent coaching session and this transcript."
+              "description": "The unique ID of the user who owns the parent session, matching `request.auth.uid`."
             },
             {
-              "name": "coachingSessionId",
-              "description": "The unique identifier of the parent coaching session."
+              "name": "sessionId",
+              "description": "The unique ID of the parent coaching session."
             },
             {
-              "name": "sessionTranscriptId",
-              "description": "The unique identifier for the specific session transcript."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/users/{userId}/coachingSessions/{coachingSessionId}/sessionTranscripts/{sessionTranscriptId}/transcriptEntries/{transcriptEntryId}",
-        "definition": {
-          "entityName": "TranscriptEntry",
-          "schema": {
-            "$ref": "#/backend/entities/TranscriptEntry"
-          },
-          "description": "Stores individual entries (utterances) within a session transcript. Includes denormalized 'userId', 'coachingSessionId', and 'sessionTranscriptId' fields for complete authorization independence, enabling direct ownership checks without referencing parent documents.",
-          "params": [
-            {
-              "name": "userId",
-              "description": "The unique identifier of the user who owns the parent coaching session, transcript, and this entry."
-            },
-            {
-              "name": "coachingSessionId",
-              "description": "The unique identifier of the parent coaching session."
-            },
-            {
-              "name": "sessionTranscriptId",
-              "description": "The unique identifier of the parent session transcript."
-            },
-            {
-              "name": "transcriptEntryId",
-              "description": "The unique identifier for the specific transcript entry."
+              "name": "messageId",
+              "description": "The unique ID of the session message."
             }
           ]
         }
       }
     ],
-    "reasoning": "The Firestore structure is designed following a strict hierarchical path-based ownership model, centralizing all user-specific data under `/users/{userId}`. This approach inherently supports private data and simplifies security rules by aligning document ownership directly with the authenticated user's ID (`request.auth.uid`).\n\nAuthorization Independence is achieved through strategic denormalization. For `SessionTranscript` documents, the `userId` (owner's ID) and `coachingSessionId` are copied from the parent `CoachingSession` document. Similarly, for `TranscriptEntry` documents, the `userId`, `coachingSessionId`, and `sessionTranscriptId` are denormalized. This ensures that every document in the hierarchy contains all necessary authorization context directly within its own fields, eliminating the need for `get()` calls in security rules to check parent documents. This is CRITICAL for robust security and efficient atomic operations.\n\nThis structure directly supports QAPs (Queries Are Permissions) by enabling secure `list` operations. For example, a user can query their `coachingSessions` or `sessionTranscripts` by simply filtering `userId == request.auth.uid`. Since the `userId` is present in every document (either directly in the path or denormalized into the document fields for subcollections), Firestore security rules can perform simple, direct checks like `allow list: if request.auth.uid == resource.data.userId;` or `allow list: if request.auth.uid == userId;` (where `userId` is the path wildcard). This allows Firestore's indexing to efficiently enforce security during queries, rather than relying on inefficient and insecure client-side filtering or rule-based `get()` operations, which would break query atomicity and debuggability. Structural Segregation is maintained as all documents within a given collection (`coachingSessions`, `sessionTranscripts`, `transcriptEntries`) share the same authorization posture (user-owned)."
+    "reasoning": "The recommended Firestore structure is based on a hierarchical, user-centric model that prioritizes data segregation and authorization independence. All user-specific data is nested under a top-level `/users/{userId}` collection, where `{userId}` directly corresponds to the authenticated user's `uid`.\n\n1.  **UserProfile:** Stored at `/users/{userId}`, where the document ID `userId` matches `request.auth.uid`. This provides direct path-based ownership, making security rules simple: `allow read, write: if request.auth.uid == userId;`.\n\n2.  **CoachingSession:** Stored as a subcollection at `/users/{userId}/coachingSessions/{sessionId}`. Each `CoachingSession` document includes a `userId` field which holds the ID of the owning user. This field is consistent with the `{userId}` wildcard in the path, reinforcing ownership and supporting authorization checks without requiring `get()` operations on the parent `UserProfile` document. This adheres to Authorization Independence.\n\n3.  **SessionMessage:** Stored as a subcollection at `/users/{userId}/coachingSessions/{sessionId}/sessionMessages/{messageId}`. To ensure **Authorization Independence (CRITICAL)** and simplify security rules, each `SessionMessage` document **must include a denormalized `userId` field**, copied from its grandparent `UserProfile` (or parent `CoachingSession`). This allows security rules at the `sessionMessages` level to check `request.auth.uid == resource.data.userId` directly, completely avoiding expensive and non-atomic `get()` calls to parent documents like `coachingSessions` or `users`. This is fundamental for robust and debuggable security.\n\n**QAPs (Queryable Access Patterns) Support:**\nThis structure naturally enables secure `list` operations. Because all user-specific data is strictly partitioned under `/users/{userId}`, any `list` query from the client for `coachingSessions` or `sessionMessages` will automatically be scoped by the `request.auth.uid` in the path. Security rules can enforce that the `{userId}` in the path matches `request.auth.uid`, ensuring that users can only query their own data. The denormalized `userId` field in `CoachingSession` and `SessionMessage` documents further allows for efficient, server-side filtering and robust rule enforcement for all read and write operations, directly supporting QAPs by ensuring rules are not acting as filters but as access enforcers on well-defined data scopes."
   }
 }

@@ -3,47 +3,43 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * FIRESTORE SECURITY RULES DOCUMENTATION
+     * CORE PHILOSOPHY:
+     * This ruleset enforces a strict user-ownership model designed for an AI coaching application. 
+     * Security is rooted in the authenticated user's identity, ensuring that users can only 
+     * access and modify their own profile, sessions, and messages.
      *
-     * Core Philosophy:
-     * This ruleset implements a strict hierarchical ownership model. All application data is 
-     * logically and physically partitioned under a user's unique identifier (/users/{userId}).
-     * This ensures that by default, data is private and accessible only to the originating user.
+     * DATA STRUCTURE:
+     * All data is organized hierarchically under a top-level /users/{userId} collection.
+     * - /users/{userId}: The User's profile.
+     * - /users/{userId}/coachingSessions/{sessionId}: AI coaching interactions owned by the user.
+     * - /users/{userId}/coachingSessions/{sessionId}/sessionMessages/{messageId}: Chat history for a session.
      *
-     * Data Structure:
-     * The hierarchy follows a User -> CoachingSession -> SessionTranscript -> TranscriptEntry 
-     * nesting pattern. This structure mirrors the natural relationship of the data and 
-     * facilitates efficient path-based authorization.
-     *
-     * Key Security Decisions:
-     * 1. Path-Based Authorization: We rely primarily on the {userId} wildcard in the path 
-     *    to verify ownership against the authenticated 'request.auth.uid'.
-     * 2. Denormalization for Integrity: Relational fields (like userId and coachingSessionId) 
-     *    are expected within document bodies. Rules enforce that these fields match the 
-     *    path parameters during creation to maintain relational integrity.
-     * 3. Prototyping Flexibility: While authorization is strictly enforced, the rules do 
-     *    not validate specific data types or non-relational fields, allowing for rapid schema iteration.
-     * 4. State Safety: Update and delete operations require the resource to exist and 
-     *    ownership to be verified before proceeding.
-     *
-     * Structural Segregation:
-     * All data is treated as private user content. There are no public collections 
-     * defined in this IR.
+     * KEY SECURITY DECISIONS:
+     * 1. Path-Based Authorization: The {userId} wildcard in the document path is the primary 
+     *    source of truth for ownership.
+     * 2. Authorization Independence: Subcollections (sessions and messages) include a 
+     *    denormalized 'userId' field. This allows rules to verify ownership directly from 
+     *    the document's data without performing expensive 'get()' lookups on parent documents.
+     * 3. Immutability of Ownership: Once a document is created, the 'userId' or 'id' field 
+     *    linking it to a user cannot be changed, preventing data hijacking.
+     * 4. Prototyping Flexibility: While authorization is strictly enforced, the rules do 
+     *    not validate non-security data types (e.g., strings vs. numbers for content) to 
+     *    allow for rapid feature iteration.
      */
 
-    // --- Helper Functions ---
+    // --- Global Helper Functions ---
 
-    /** Checks if the request is made by a signed-in user. */
+    /** Checks if the request is made by an authenticated user. */
     function isSignedIn() {
       return request.auth != null;
     }
 
-    /** Checks if the authenticated user matches the provided userId from the path. */
+    /** Checks if the authenticated user's UID matches the provided userId. */
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    /** Verifies the document exists and the requester is the owner. Used for updates and deletes. */
+    /** Checks if a document exists and the current user is the owner. Used for updates and deletes. */
     function isExistingOwner(userId) {
       return resource != null && isOwner(userId);
     }
@@ -51,39 +47,39 @@ service cloud.firestore {
     // --- Collection Rules ---
 
     /**
-     * @description Rules for individual coaching sessions. Access is restricted to the session owner.
-     * @path /users/{userId}/coachingSessions/{coachingSessionId}
-     * @allow (create) User 'abc' creates a session at /users/abc/coachingSessions/session_123 where data.userId == 'abc'.
-     * @deny (list) User 'abc' attempts to list sessions at /users/xyz/coachingSessions.
-     * @principle Enforces strict path-based ownership and validates relational consistency on creation.
+     * @description Rules for the UserProfile entity. Users can only manage their own profile.
+     * @path /users/{userId}
+     * @allow (create) User 'abc' creates a document at /users/abc where the data field 'id' is 'abc'.
+     * @deny (list) User 'abc' attempts to list all documents in /users.
+     * @principle Enforces path-based ownership and validates relational integrity between the path and document ID.
      */
-    match /users/{userId}/coachingSessions/{coachingSessionId} {
+    match /users/{userId} {
       allow get, list: if isOwner(userId);
-      allow create: if isOwner(userId) && request.resource.data.userId == userId && request.resource.data.id == coachingSessionId;
-      allow update: if isExistingOwner(userId) && request.resource.data.userId == resource.data.userId;
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
+      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
       allow delete: if isExistingOwner(userId);
 
       /**
-       * @description Rules for transcripts associated with a coaching session.
-       * @path /users/{userId}/coachingSessions/{coachingSessionId}/sessionTranscripts/{sessionTranscriptId}
-       * @allow (get) User 'abc' reads their own transcript.
-       * @deny (update) User 'abc' attempts to change the 'userId' field of an existing transcript.
-       * @principle Uses denormalized userId field to ensure authorization context remains consistent.
+       * @description Rules for CoachingSession entity. Nested under the owner for strict segregation.
+       * @path /users/{userId}/coachingSessions/{sessionId}
+       * @allow (get) User 'abc' reads /users/abc/coachingSessions/session123.
+       * @deny (update) User 'abc' attempts to change the 'userId' field of an existing session.
+       * @principle Uses denormalized 'userId' for efficient ownership verification and enforces field immutability.
        */
-      match /sessionTranscripts/{sessionTranscriptId} {
+      match /coachingSessions/{sessionId} {
         allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && request.resource.data.userId == userId && request.resource.data.coachingSessionId == coachingSessionId;
+        allow create: if isOwner(userId) && request.resource.data.userId == userId;
         allow update: if isExistingOwner(userId) && request.resource.data.userId == resource.data.userId;
         allow delete: if isExistingOwner(userId);
 
         /**
-         * @description Rules for individual entries within a transcript.
-         * @path /users/{userId}/coachingSessions/{coachingSessionId}/sessionTranscripts/{sessionTranscriptId}/transcriptEntries/{transcriptEntryId}
-         * @allow (list) User 'abc' fetches all entries for their specific transcript.
-         * @deny (create) User 'abc' attempts to create an entry under User 'xyz's path.
-         * @principle Deeply nested ownership verification using path wildcards.
+         * @description Rules for SessionMessage entity.
+         * @path /users/{userId}/coachingSessions/{sessionId}/sessionMessages/{messageId}
+         * @allow (create) User 'abc' sends a message where the denormalized 'userId' field is 'abc'.
+         * @deny (create) User 'abc' sends a message to user 'xyz's session path.
+         * @principle Ensures authorization independence by checking the denormalized 'userId' field on the message.
          */
-        match /transcriptEntries/{transcriptEntryId} {
+        match /sessionMessages/{messageId} {
           allow get, list: if isOwner(userId);
           allow create: if isOwner(userId) && request.resource.data.userId == userId;
           allow update: if isExistingOwner(userId) && request.resource.data.userId == resource.data.userId;
