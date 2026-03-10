@@ -1,10 +1,56 @@
 {
   "entities": {
+    "UserProfile": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "UserProfile",
+      "type": "object",
+      "description": "Represents a user within the AI Coach Connect application, linked to an external authentication system.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the UserProfile entity."
+        },
+        "externalId": {
+          "type": "string",
+          "description": "Unique identifier for the user from the external authentication system. (Relationship: ExternalAuth 1:1 UserProfile)"
+        },
+        "email": {
+          "type": "string",
+          "description": "The user's email address.",
+          "format": "email"
+        },
+        "firstName": {
+          "type": "string",
+          "description": "The user's first name."
+        },
+        "lastName": {
+          "type": "string",
+          "description": "The user's last name."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the user profile was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the user profile was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "externalId",
+        "email",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
     "CoachingSession": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "CoachingSession",
       "type": "object",
-      "description": "Represents a single real-time AI coaching session between a user and the AI coach, tracking its lifecycle and key data points for historical and analytical purposes.",
+      "description": "Represents a single coaching session between a user and the AI coach.",
       "properties": {
         "id": {
           "type": "string",
@@ -12,48 +58,86 @@
         },
         "userId": {
           "type": "string",
-          "description": "Identifier for the user who initiated this session, as provided by the external authentication system. This links the session to a specific user. (Relationship: User 1:N CoachingSession)"
+          "description": "Reference to the UserProfile who participated in this session. (Relationship: UserProfile 1:N CoachingSession)"
         },
         "startTime": {
           "type": "string",
-          "description": "The UTC timestamp when the coaching session officially began.",
+          "description": "The date and time when the coaching session began.",
           "format": "date-time"
         },
         "endTime": {
           "type": "string",
-          "description": "The UTC timestamp when the coaching session concluded. This property will be null for sessions that are currently active or were not completed.",
+          "description": "The date and time when the coaching session ended.",
           "format": "date-time"
         },
-        "status": {
-          "type": "string",
-          "description": "The current lifecycle status of the coaching session (e.g., 'active', 'completed', 'cancelled', 'failed')."
-        },
-        "durationSeconds": {
+        "durationMinutes": {
           "type": "number",
-          "description": "The total duration of the coaching session in seconds, calculated upon its completion."
+          "description": "The total duration of the coaching session in minutes."
         },
         "simliSessionId": {
           "type": "string",
-          "description": "Optional unique identifier provided by the Simli platform for its internal tracking of this specific session. Useful for debugging or linking to Simli's records."
+          "description": "Optional identifier provided by the Simli platform for this specific session, if available."
         },
-        "geminiConversationId": {
+        "geminiSessionId": {
           "type": "string",
-          "description": "Optional unique identifier for the Gemini Multimodal Live conversation associated with this session, useful for tracing interactions within the Gemini API."
+          "description": "Optional identifier provided by the Gemini platform for this specific session, if available."
         },
-        "transcript": {
+        "transcriptSummary": {
           "type": "string",
-          "description": "The full text transcript of the coaching session's verbal exchanges, capturing all spoken dialogue between the user and the AI coach."
+          "description": "A summarized version of the conversation transcript from the session."
         },
-        "summary": {
+        "createdAt": {
           "type": "string",
-          "description": "An AI-generated summary or key takeaways from the coaching session, typically provided upon its completion to highlight important points or actions."
+          "description": "Timestamp indicating when the coaching session record was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the coaching session record was last updated.",
+          "format": "date-time"
         }
       },
       "required": [
         "id",
         "userId",
         "startTime",
-        "status"
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "SessionFeedback": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "SessionFeedback",
+      "type": "object",
+      "description": "Represents feedback provided by a user for a specific coaching session.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the SessionFeedback entity."
+        },
+        "sessionId": {
+          "type": "string",
+          "description": "Reference to the CoachingSession this feedback is for. (Relationship: CoachingSession 1:N SessionFeedback)"
+        },
+        "rating": {
+          "type": "number",
+          "description": "A numerical rating provided by the user for the session (e.g., 1-5)."
+        },
+        "comments": {
+          "type": "string",
+          "description": "Detailed textual comments provided by the user about the session."
+        },
+        "submittedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the feedback was submitted.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "sessionId",
+        "rating",
+        "submittedAt"
       ]
     }
   },
@@ -66,26 +150,66 @@
   "firestore": {
     "structure": [
       {
-        "path": "users/{userId}/coachingSessions/{coachingSessionId}",
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "UserProfile",
+          "schema": {
+            "$ref": "#/backend/entities/UserProfile"
+          },
+          "description": "Stores individual user profiles. The document ID (`userId`) must explicitly match the user's `request.auth.uid` (UserProfile.externalId) for direct path-based authorization. No denormalization for authorization is needed as access is determined by the path.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user, matching `request.auth.uid` and `UserProfile.externalId`."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/coaching_sessions/{sessionId}",
         "definition": {
           "entityName": "CoachingSession",
           "schema": {
             "$ref": "#/backend/entities/CoachingSession"
           },
-          "description": "Stores individual coaching sessions for each user. Each session document includes a denormalized 'userId' field, which matches the '{userId}' in the path for robust authorization independence and simplified security rules.",
+          "description": "Stores individual coaching session records for a specific user. The `userId` field within the document must match the `userId` in the path for data integrity, and access is restricted to the owning user via path-based authorization.",
           "params": [
             {
               "name": "userId",
-              "description": "The unique identifier of the user who owns this coaching session."
+              "description": "The unique identifier of the user who owns this session, matching `request.auth.uid`."
             },
             {
-              "name": "coachingSessionId",
-              "description": "The unique identifier for a specific coaching session."
+              "name": "sessionId",
+              "description": "The unique identifier for the coaching session."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/coaching_sessions/{sessionId}/feedback/{feedbackId}",
+        "definition": {
+          "entityName": "SessionFeedback",
+          "schema": {
+            "$ref": "#/backend/entities/SessionFeedback"
+          },
+          "description": "Stores feedback for a specific coaching session. To ensure authorization independence and simplify security rules, each feedback document will include a denormalized `userId` field, matching the `userId` in the path and the owning user's ID. This avoids the need for `get()` calls to parent documents for authorization.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user who owns the session and provided the feedback, matching `request.auth.uid`."
+            },
+            {
+              "name": "sessionId",
+              "description": "The unique identifier for the coaching session this feedback pertains to."
+            },
+            {
+              "name": "feedbackId",
+              "description": "The unique identifier for the session feedback."
             }
           ]
         }
       }
     ],
-    "reasoning": "The recommended Firestore structure prioritizes robust security, scalability, and debuggability, adhering strictly to the core design principles. The central entity, `CoachingSession`, is designed to be tightly coupled with its owner, the user.\n\n**1. Authorization Independence via Denormalization:**\nEach `CoachingSession` document will be stored within a user-specific subcollection: `users/{userId}/coachingSessions/{coachingSessionId}`. The `CoachingSession` schema explicitly includes a `userId` field. This denormalizes the ownership information directly into the document itself, making it redundant with the `{userId}` wildcard in the path. This redundancy is crucial. It means security rules can directly evaluate `request.auth.uid == userId` (where `userId` is the path wildcard) without needing to perform any `get()` operations to check parent documents or other entities. This completely eliminates hierarchical authorization dependencies, enabling atomic operations (transactions/batches) and significantly simplifying rule logic. For example, a user can create a `CoachingSession` document in their own subcollection without any complex checks on a parent `User` document.\n\n**2. QAPs (Rules are not Filters) & Structural Segregation:**\nThis hierarchical structure is fundamental for implementing Queryable Authorization Policies (QAPs). By enforcing that `CoachingSession` documents live under `users/{userId}/coachingSessions`, a user can only perform `list` operations against their *own* subcollection (i.e., `users/{request.auth.uid}/coachingSessions`). Security rules will ensure that `request.auth.uid` matches the `{userId}` wildcard in the path for any read access. This naturally filters results by owner at the path level, ensuring that rules are not used as filters and preventing over-fetching or unauthorized data exposure. All documents within `users/{userId}/coachingSessions` share the identical security posture (owned by `{userId}`), achieving **Structural Segregation** and simplifying rules to a single, clear ownership check. There's no mix of public and private data within this specific collection.\n\n**3. Clarity of Intent and Debuggability:**\n The path `users/{userId}/coachingSessions/{coachingSessionId}` explicitly communicates the ownership of each session. The inclusion of an explicit `status` field (e.g., 'active', 'completed') within the `CoachingSession` document adheres to the **Explicit State Modeling** principle, making the lifecycle of a session clear and predictable, which greatly assists in understanding and debugging both application logic and security rules. Wildcards (`{userId}`, `{coachingSessionId}`) are descriptive, enhancing readability.\n\nIn summary, this design leverages path-based ownership and intentional denormalization of the `userId` to create an inherently secure, performant, and easy-to-manage Firestore structure for coaching sessions, fully aligning with all mandated design principles."
+    "reasoning": "The recommended Firestore data structure prioritizes security, scalability, and debuggability by adhering to the core design principles of Authorization Independence, Structural Segregation, and consistent Access Modeling. This design ensures that security rules are simple, robust, and easy to debug.\n\n1.  **User Profiles (`/users/{userId}`):** User profiles are stored in a top-level collection `users`. Each document in this collection represents a `UserProfile`, with its document ID (`userId`) explicitly matching the user's `externalId` (which corresponds to `request.auth.uid`). This path-based ownership makes authorization for a user's own profile direct and atomic.\n\n2.  **Coaching Sessions (`/users/{userId}/coaching_sessions/{sessionId}`):** Coaching sessions are stored as a subcollection under the specific user's profile. This hierarchical structure immediately ties each `CoachingSession` to its `UserProfile` owner. The `CoachingSession` entity naturally includes a `userId` field, which will be validated against the `userId` in the document path (`request.auth.uid`). This provides an inherent ownership model, where a session is always owned by the user whose ID is in the parent path.\n\n3.  **Session Feedback (`/users/{userId}/coaching_sessions/{sessionId}/feedback/{feedbackId}`):** Feedback for a coaching session is stored as a subcollection under the specific `CoachingSession` document. Crucially, the `SessionFeedback` entity, as defined, does not inherently contain a `userId` field. To uphold **Authorization Independence (CRITICAL)**, each `SessionFeedback` document will be augmented to include a denormalized `userId` field. This `userId` will match the `userId` of the owning `UserProfile` and the `userId` in the parent path.\n\n**How the structure achieves Authorization Independence:**\n*   **`/users/{userId}`:** Access rules only need to check `request.auth.uid == userId` (where `userId` is the document ID). No `get()` calls to parent documents are necessary.\n*   **`/users/{userId}/coaching_sessions/{sessionId}`:** Access rules only need to check `request.auth.uid == userId` (where `userId` is the path parameter). The `userId` field within the `CoachingSession` document serves as an integrity check, but authorization relies on the path. No `get()` calls to the parent `UserProfile` document are necessary.\n*   **`/users/{userId}/coaching_sessions/{sessionId}/feedback/{feedbackId}`:** By denormalizing `userId` into each `SessionFeedback` document, authorization rules can directly evaluate `request.auth.uid == resource.data.userId`. This completely eliminates the need for `get()` calls to the parent `CoachingSession` or grandparent `UserProfile` documents to determine ownership, making rules atomic and independent.\n\n**How the structure supports QAPs (Rules are not Filters):**\n*   **Structural Segregation and Path-Based Ownership:** All data within a given path segment (e.g., `/users/{userId}/coaching_sessions`) inherently belongs to the specified user (`userId`). When a user performs a `list` operation on a subcollection (e.g., `db.collection('users').doc(uid).collection('coaching_sessions')`), Firestore's security rules can grant read access if `request.auth.uid == userId`. Because the data is already segregated by user ID in the path, the `list` operation will only return documents owned by that user. No additional `where` clauses in the query are required to satisfy security rules, preventing accidental data exposure and ensuring queries are efficient. The `userId` denormalization in `SessionFeedback` further reinforces this, allowing `list` operations on feedback subcollections to be directly secured by `resource.data.userId` without filtering on query results."
   }
 }
