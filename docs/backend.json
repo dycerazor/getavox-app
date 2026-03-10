@@ -1,5 +1,86 @@
 {
-  "entities": {},
+  "entities": {
+    "UserProfile": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "UserProfile",
+      "type": "object",
+      "description": "Stores profile information for users interacting with the AI Coach Connect app. Authentication data (e.g., passwords) is managed by an external system.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the UserProfile entity."
+        },
+        "email": {
+          "type": "string",
+          "description": "The user's email address, used for communication and identification purposes.",
+          "format": "email"
+        },
+        "firstName": {
+          "type": "string",
+          "description": "The user's first name."
+        },
+        "lastName": {
+          "type": "string",
+          "description": "The user's last name."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the user profile was first created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the user profile was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "email",
+        "createdAt"
+      ]
+    },
+    "CoachingSession": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "CoachingSession",
+      "type": "object",
+      "description": "Represents a single, real-time coaching session between a user and the Simli AI coach, initiated via the 'Start Coaching' button.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the CoachingSession entity."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to the UserProfile who initiated this coaching session. (Relationship: UserProfile 1:N CoachingSession)"
+        },
+        "startTime": {
+          "type": "string",
+          "description": "Timestamp indicating when the coaching session began.",
+          "format": "date-time"
+        },
+        "endTime": {
+          "type": "string",
+          "description": "Timestamp indicating when the coaching session concluded. This property will be present once the session is completed or terminated.",
+          "format": "date-time"
+        },
+        "durationSeconds": {
+          "type": "number",
+          "description": "The total duration of the coaching session in seconds, calculated after the session ends."
+        },
+        "status": {
+          "type": "string",
+          "description": "Current status of the coaching session (e.g., 'active', 'completed', 'cancelled', 'failed')."
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "startTime",
+        "status"
+      ]
+    }
+  },
   "auth": {
     "providers": [
       "password",
@@ -11,34 +92,40 @@
       {
         "path": "/users/{userId}",
         "definition": {
-          "entityName": "user",
+          "entityName": "UserProfile",
           "schema": {
-            "$ref": "#/backend/entities/user"
+            "$ref": "#/backend/entities/UserProfile"
           },
-          "description": "Stores individual user profiles and settings. The userId from the path parameter must match request.auth.uid for ownership and access control. This structure ensures Authorization Independence as authorization is solely based on the path, and supports QAPs by allowing users to only retrieve their own document."
-        }
-      },
-      {
-        "path": "/users/{userId}/coaching_sessions/{sessionId}",
-        "definition": {
-          "entityName": "coachingSession",
-          "schema": {
-            "$ref": "#/backend/entities/coachingSession"
-          },
-          "description": "Contains records of individual coaching sessions for a specific user. Access is restricted to the owner of the parent user document. This path leverages hierarchical ownership for strong Authorization Independence (no 'get()' calls needed in rules) and enables secure, efficient QAPs for listing a user's own sessions.",
+          "description": "Stores individual user profile data. Access is strictly restricted to the user whose authenticated UID matches the `{userId}` in the path.",
           "params": [
             {
               "name": "userId",
-              "description": "The unique ID of the user who owns this coaching session, matching request.auth.uid."
+              "description": "The unique identifier of the user, corresponding to `request.auth.uid`."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/coachingSessions/{sessionId}",
+        "definition": {
+          "entityName": "CoachingSession",
+          "schema": {
+            "$ref": "#/backend/entities/CoachingSession"
+          },
+          "description": "Stores details of individual coaching sessions belonging to a specific user. Each document includes a denormalized `userId` field to ensure Authorization Independence, allowing rules to verify ownership without parent document lookups. Access is restricted to the user whose authenticated UID matches the `{userId}` in the path and the `userId` field within the document.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user who owns this coaching session, corresponding to `request.auth.uid`."
             },
             {
               "name": "sessionId",
-              "description": "The unique ID of a specific coaching session."
+              "description": "The unique identifier for a specific coaching session."
             }
           ]
         }
       }
     ],
-    "reasoning": "The provided application requirements for 'AI Coach Connect' primarily focus on real-time interactions, AI integration (Simli, Gemini), and UI components. There are no explicit mentions of persistent data storage needs in Firestore for session logs, user profiles, or settings. However, as a 'boilerplate for a real-time AI coaching app', it is highly probable that such data will be required for user experience, historical tracking, and personalization in future iterations.\n\nTherefore, this recommendation establishes a foundational Firestore structure based on common patterns for user-centric applications, prioritizing security, scalability, and debuggability from the outset. The core design principles, especially Authorization Independence and QAPs, are strictly applied:\n\n1.  **User-Owned Data (Authorization Independence & QAPs):** All user-specific data, such as `user` profiles and their individual `coaching_sessions`, are structured under `/users/{userId}` and `/users/{userId}/coaching_sessions/{sessionId}` respectively. This path-based ownership ensures that `request.auth.uid` can directly be compared against the `{userId}` wildcard in security rules. This eliminates the need for `get()` calls to check parent documents for authorization, thus achieving Authorization Independence. For QAPs (Queries as Permissions), this structure naturally scopes `list` operations. A user can only `list` their own coaching sessions by querying `db.collection('users').doc(request.auth.uid).collection('coaching_sessions')`, which is highly efficient and secure.\n\n2.  **Structural Segregation:** Each collection (`/users`, `/users/{userId}/coaching_sessions`) is designed to hold documents with a homogeneous security posture. A user's profile is private to them (or visible to specific roles, if implemented), and their coaching sessions are strictly private. There is no mixing of public and private data within the same collection.\n\n3.  **DBAC (Database-Backed Access Control):** While no specific roles are defined in the current scope, the structure is ready to implement DBAC. If administrative roles were needed, they would be stored in a dedicated collection like `/roles_admin/{uid}`, relying on existence checks rather than custom claims.\n\n4.  **Clarity of Intent:** The paths clearly indicate the ownership and relationship of the data, making security rules intuitive and easy to debug. The `ownerId` concept is implicit in the path structure for user-owned data."
+    "reasoning": "The Firestore structure prioritizes Authorization Independence and QAPs by leveraging path-based ownership and explicit denormalization. User profiles are stored in `/users/{userId}`, making access trivial: only the authenticated user (`request.auth.uid`) can read or write their own profile. Coaching sessions are placed in a subcollection, `/users/{userId}/coachingSessions/{sessionId}`.\n\nAuthorization Independence for CoachingSession is achieved by including the `userId` directly within each `CoachingSession` document. This means that security rules evaluating access to a specific coaching session can check `request.auth.uid == resource.data.userId` without needing to perform a `get()` operation on the parent `/users/{userId}` document. This eliminates hierarchical authorization dependencies, enabling atomic operations and simplifying rule debugging.\n\nQAPs (Query as a Principal) are supported for coaching sessions through this hierarchical structure. When a user queries `/users/{userId}/coachingSessions`, Firestore's security rules can implicitly ensure that the `{userId}` in the path matches `request.auth.uid`. This allows for secure `list` operations where users can only retrieve their own coaching sessions, preventing unauthorized data exposure and ensuring rules act as true validators, not filters. The explicit `userId` field within the `CoachingSession` document further reinforces document-level ownership checks during individual `get` or `update` operations."
   }
 }
