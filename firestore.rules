@@ -1,91 +1,18 @@
-rules_version = '2';
+rules_version='2'
+
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    /**
-     * CORE PHILOSOPHY:
-     * This ruleset enforces a strict user-ownership model designed for an AI coaching application. 
-     * Security is rooted in the authenticated user's identity, ensuring that users can only 
-     * access and modify their own profile, sessions, and messages.
-     *
-     * DATA STRUCTURE:
-     * All data is organized hierarchically under a top-level /users/{userId} collection.
-     * - /users/{userId}: The User's profile.
-     * - /users/{userId}/coachingSessions/{sessionId}: AI coaching interactions owned by the user.
-     * - /users/{userId}/coachingSessions/{sessionId}/sessionMessages/{messageId}: Chat history for a session.
-     *
-     * KEY SECURITY DECISIONS:
-     * 1. Path-Based Authorization: The {userId} wildcard in the document path is the primary 
-     *    source of truth for ownership.
-     * 2. Authorization Independence: Subcollections (sessions and messages) include a 
-     *    denormalized 'userId' field. This allows rules to verify ownership directly from 
-     *    the document's data without performing expensive 'get()' lookups on parent documents.
-     * 3. Immutability of Ownership: Once a document is created, the 'userId' or 'id' field 
-     *    linking it to a user cannot be changed, preventing data hijacking.
-     * 4. Prototyping Flexibility: While authorization is strictly enforced, the rules do 
-     *    not validate non-security data types (e.g., strings vs. numbers for content) to 
-     *    allow for rapid feature iteration.
-     */
-
-    // --- Global Helper Functions ---
-
-    /** Checks if the request is made by an authenticated user. */
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    /** Checks if the authenticated user's UID matches the provided userId. */
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
-    /** Checks if a document exists and the current user is the owner. Used for updates and deletes. */
-    function isExistingOwner(userId) {
-      return resource != null && isOwner(userId);
-    }
-
-    // --- Collection Rules ---
-
-    /**
-     * @description Rules for the UserProfile entity. Users can only manage their own profile.
-     * @path /users/{userId}
-     * @allow (create) User 'abc' creates a document at /users/abc where the data field 'id' is 'abc'.
-     * @deny (list) User 'abc' attempts to list all documents in /users.
-     * @principle Enforces path-based ownership and validates relational integrity between the path and document ID.
-     */
-    match /users/{userId} {
-      allow get, list: if isOwner(userId);
-      allow create: if isOwner(userId) && request.resource.data.id == userId;
-      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
-      allow delete: if isExistingOwner(userId);
-
-      /**
-       * @description Rules for CoachingSession entity. Nested under the owner for strict segregation.
-       * @path /users/{userId}/coachingSessions/{sessionId}
-       * @allow (get) User 'abc' reads /users/abc/coachingSessions/session123.
-       * @deny (update) User 'abc' attempts to change the 'userId' field of an existing session.
-       * @principle Uses denormalized 'userId' for efficient ownership verification and enforces field immutability.
-       */
-      match /coachingSessions/{sessionId} {
-        allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && request.resource.data.userId == userId;
-        allow update: if isExistingOwner(userId) && request.resource.data.userId == resource.data.userId;
-        allow delete: if isExistingOwner(userId);
-
-        /**
-         * @description Rules for SessionMessage entity.
-         * @path /users/{userId}/coachingSessions/{sessionId}/sessionMessages/{messageId}
-         * @allow (create) User 'abc' sends a message where the denormalized 'userId' field is 'abc'.
-         * @deny (create) User 'abc' sends a message to user 'xyz's session path.
-         * @principle Ensures authorization independence by checking the denormalized 'userId' field on the message.
-         */
-        match /sessionMessages/{messageId} {
-          allow get, list: if isOwner(userId);
-          allow create: if isOwner(userId) && request.resource.data.userId == userId;
-          allow update: if isExistingOwner(userId) && request.resource.data.userId == resource.data.userId;
-          allow delete: if isExistingOwner(userId);
-        }
-      }
+    match /{document=**} {
+      // This rule allows anyone with your database reference to view, edit,
+      // and delete all data in your database. It is useful for getting
+      // started, but it is configured to expire after 30 days because it
+      // leaves your app open to attackers. At that time, all client
+      // requests to your database will be denied.
+      //
+      // Make sure to write security rules for your app before that time, or
+      // else all client requests to your database will be denied until you
+      // update your rules.
+      allow read, write: if request.time < timestamp.date(2026, 4, 9);
     }
   }
 }
