@@ -1,0 +1,6 @@
+{
+  "requiredServices": [
+    "firestore",
+    "auth"
+  ]
+}
