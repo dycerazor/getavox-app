@@ -10,16 +10,23 @@ import { talkToCoach } from '@/ai/flows/realtime-ai-coaching';
 import { base64PcmToInt16Array } from '@/lib/simli-utils';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { useUser, useFirestore } from '@/firebase';
+import { collection, doc, serverTimestamp } from 'firebase/firestore';
+import { addDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 
 const DEFAULT_FACE_ID = "tmp_face_id_placeholder";
 
 export function MascotCoachInterface() {
+  const { user } = useUser();
+  const db = useFirestore();
+
   const [isActive, setIsActive] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [transcription, setTranscription] = useState('');
   const [conversationHistory, setConversationHistory] = useState<{ role: 'user' | 'model', content: string }[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -58,6 +65,18 @@ export function MascotCoachInterface() {
 
     setIsThinking(true);
     try {
+      // 1. Persist User Message to Firestore
+      if (user && db && currentSessionId) {
+        const messagesRef = collection(db, 'users', user.uid, 'coachingSessions', currentSessionId, 'sessionMessages');
+        addDocumentNonBlocking(messagesRef, {
+          sessionId: currentSessionId,
+          sender: 'user',
+          contentType: 'text',
+          textContent: text,
+          timestamp: serverTimestamp(),
+        });
+      }
+
       const response = await talkToCoach({
         userInputText: text,
         conversationHistory: conversationHistory
@@ -68,6 +87,18 @@ export function MascotCoachInterface() {
         { role: 'user', content: text },
         { role: 'model', content: response.aiResponseText }
       ]);
+
+      // 2. Persist AI Response to Firestore
+      if (user && db && currentSessionId) {
+        const messagesRef = collection(db, 'users', user.uid, 'coachingSessions', currentSessionId, 'sessionMessages');
+        addDocumentNonBlocking(messagesRef, {
+          sessionId: currentSessionId,
+          sender: 'ai',
+          contentType: 'text',
+          textContent: response.aiResponseText,
+          timestamp: serverTimestamp(),
+        });
+      }
 
       const pcmData = base64PcmToInt16Array(response.aiResponseAudioUri);
       
@@ -102,6 +133,24 @@ export function MascotCoachInterface() {
       });
 
       await client.start();
+
+      // Create a new session in Firestore if authenticated
+      if (user && db) {
+        const sessionsRef = collection(db, 'users', user.uid, 'coachingSessions');
+        const sessionPromise = addDocumentNonBlocking(sessionsRef, {
+          userId: user.uid,
+          startTime: serverTimestamp(),
+          status: 'started',
+          summary: '',
+        });
+        
+        // addDocumentNonBlocking returns a promise for the ref
+        const sessionRef = await sessionPromise;
+        if (sessionRef) {
+          setCurrentSessionId(sessionRef.id);
+        }
+      }
+
       setIsActive(true);
     } catch (error) {
       console.error("Failed to start coaching:", error);
@@ -109,7 +158,7 @@ export function MascotCoachInterface() {
     } finally {
       setIsInitializing(false);
     }
-  }, []);
+  }, [user, db]);
 
   const stopCoaching = useCallback(() => {
     if (simliClientRef.current) {
@@ -119,11 +168,22 @@ export function MascotCoachInterface() {
     if (recognitionRef.current) {
       recognitionRef.current.stop();
     }
+
+    // Mark session as completed in Firestore
+    if (user && db && currentSessionId) {
+      const sessionRef = doc(db, 'users', user.uid, 'coachingSessions', currentSessionId);
+      setDocumentNonBlocking(sessionRef, {
+        status: 'completed',
+        endTime: serverTimestamp(),
+      }, { merge: true });
+    }
+
     setIsActive(false);
     setIsListening(false);
     setConversationHistory([]);
     setTranscription('');
-  }, []);
+    setCurrentSessionId(null);
+  }, [user, db, currentSessionId]);
 
   const toggleListening = () => {
     if (!isActive) return;

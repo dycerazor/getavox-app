@@ -1,7 +1,9 @@
 'use client';
 
-import { useAuth, useUser } from '@/firebase';
+import { useAuth, useUser, useFirestore } from '@/firebase';
 import { GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { doc, serverTimestamp } from 'firebase/firestore';
+import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { Button } from '@/components/ui/button';
 import { LogIn, LogOut, User as UserIcon, Loader2 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -17,11 +19,26 @@ import {
 export function AuthButton() {
   const { user, isUserLoading } = useUser();
   const auth = useAuth();
+  const db = useFirestore();
 
   const handleSignIn = async () => {
     const provider = new GoogleAuthProvider();
     try {
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      const loggedInUser = result.user;
+
+      // Automatically sync user profile to Firestore
+      if (loggedInUser && db) {
+        const userRef = doc(db, 'users', loggedInUser.uid);
+        setDocumentNonBlocking(userRef, {
+          id: loggedInUser.uid,
+          email: loggedInUser.email,
+          firstName: loggedInUser.displayName?.split(' ')[0] || '',
+          lastName: loggedInUser.displayName?.split(' ').slice(1).join(' ') || '',
+          updatedAt: serverTimestamp(),
+          createdAt: serverTimestamp(), // Firestore rules/merge will handle if this already exists
+        }, { merge: true });
+      }
     } catch (error) {
       console.error('Error signing in with Google:', error);
     }
