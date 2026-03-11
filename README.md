@@ -51,3 +51,4 @@ This app is configured for **Firebase App Hosting**.
 - **Real-time Video**: Simli
 - **Computer Vision**: MediaPipe Pose
 - **UI**: Tailwind CSS, ShadCN UI, Lucide Icons
+# getavox-app
