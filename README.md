@@ -17,7 +17,7 @@ Experience the future of personal development with **AI Coach Connect**, a real-
 1.  **Firebase Project**: Ensure you have a Firebase project set up with Authentication and Firestore enabled.
 2.  **API Keys**: You will need the following keys in your `.env` file:
     - `SIMLI_API_KEY`: Your Simli API key for avatar streaming.
-    - `GOOGLE_GENAI_API_KEY`: Your Google AI Studio key for Gemini.
+    - `GEMINI_API_KEY`: Your Google AI Studio key for Gemini.
 
 ### Installation
 
@@ -41,7 +41,7 @@ This app is configured for **Firebase App Hosting**.
 
 1.  Push your code to a GitHub repository.
 2.  Connect the repository to Firebase App Hosting in the [Firebase Console](https://console.firebase.google.com/).
-3.  Configure your environment variables (`SIMLI_API_KEY`, `GOOGLE_GENAI_API_KEY`) in the App Hosting settings.
+3.  Configure your environment variables (`SIMLI_API_KEY`, `GEMINI_API_KEY`) in the App Hosting settings.
 
 ## Tech Stack
 
