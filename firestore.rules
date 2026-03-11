@@ -1,97 +1,18 @@
-rules_version = '2';
+rules_version='2'
+
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    /**
-     * CORE PHILOSOPHY
-     * This ruleset enforces a strict User-Ownership model. Access to data is tied directly to the 
-     * Firebase Authentication UID. Users can only read, create, update, or delete data that 
-     * exists within their specific path or contains their unique identifier.
-     *
-     * DATA STRUCTURE
-     * 1. /userProfiles/{userId}: Private profile data where the Document ID is the Auth UID.
-     * 2. /users/{userId}/coachingSessions/{sessionId}: Private coaching history nested under the user's path.
-     *
-     * KEY SECURITY DECISIONS
-     * - Path-Based Authorization: We rely on the {userId} wildcard in the path to immediately identify ownership.
-     * - Denormalization: CoachingSession documents include a 'userId' field. We enforce that this field 
-     *   matches the path and the authenticated user to ensure relational integrity and fast lookups.
-     * - Prototyping Flexibility: We do not enforce strict data types (e.g., string vs int) for content 
-     *   fields to allow for rapid UI/UX iteration, but we strictly enforce ownership fields.
-     */
-
-    // --- Helper Functions ---
-
-    /** @description Checks if the request is from an authenticated user. */
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    /** @description Checks if the authenticated user matches the provided userId. */
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
-    /** @description Combines ownership check with a check that the document currently exists. */
-    function isExistingOwner(userId) {
-      return resource != null && isOwner(userId);
-    }
-
-    // --- Collection Rules ---
-
-    /**
-     * @description Rules for the UserProfile collection. Users manage their own profile.
-     * @path /userProfiles/{userId}
-     * @allow (get) If auth.uid == userId
-     * @deny (list) If auth.uid != userId (Prevents user discovery)
-     * @principle Private Data: Path-Based ownership.
-     */
-    match /userProfiles/{userId} {
-      allow get, list: if isOwner(userId);
-      
-      allow create: if isOwner(userId) 
-                    && request.resource.data.id == userId;
-      
-      allow update: if isExistingOwner(userId) 
-                    && request.resource.data.id == resource.data.id;
-      
-      allow delete: if isExistingOwner(userId);
-    }
-
-    /**
-     * @description Rules for the top-level users path. Necessary to reach subcollections.
-     * @path /users/{userId}
-     */
-    match /users/{userId} {
-      // Basic access to the user document itself to allow navigating to coachingSessions
-      allow get: if isOwner(userId);
-      allow list: if false; // Users cannot list other users
-      allow create, update, delete: if isOwner(userId);
-
-      /**
-       * @description Rules for Coaching Sessions. Nested under the user for structural segregation.
-       * @path /users/{userId}/coachingSessions/{sessionId}
-       * @allow (list) If auth.uid matches the parent {userId}
-       * @deny (create) If request.resource.data.userId != auth.uid
-       * @principle Hierarchical path combined with internal field validation for relational integrity.
-       */
-      match /coachingSessions/{sessionId} {
-        allow get, list: if isOwner(userId);
-
-        allow create: if isOwner(userId) 
-                      && request.resource.data.userId == userId;
-
-        allow update: if isExistingOwner(userId) 
-                      && request.resource.data.userId == resource.data.userId;
-
-        allow delete: if isExistingOwner(userId);
-      }
-    }
-
-    // --- Global Deny ---
-    // Explicitly deny any access to paths not defined above.
-    match /{path=**} {
-      allow read, write: if false;
+    match /{document=**} {
+      // This rule allows anyone with your database reference to view, edit,
+      // and delete all data in your database. It is useful for getting
+      // started, but it is configured to expire after 30 days because it
+      // leaves your app open to attackers. At that time, all client
+      // requests to your database will be denied.
+      //
+      // Make sure to write security rules for your app before that time, or
+      // else all client requests to your database will be denied until you
+      // update your rules.
+      allow read, write: if request.time < timestamp.date(2026, 4, 10);
     }
   }
 }

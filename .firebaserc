@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "studio-7304244723-f5503"
-  }
+    "default": "getavox"
+  },
+  "targets": {},
+  "etags": {}
 }
