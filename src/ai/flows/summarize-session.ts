@@ -30,20 +30,20 @@ const summarizeSessionFlow = ai.defineFlow(
     outputSchema: SummarizeSessionOutputSchema,
   },
   async (input) => {
-    const prompt = `You are an AI coaching assistant. Please provide a concise summary (2-3 sentences) of the following coaching conversation. Focus on the user's goals and the advice provided.
+    const prompt = `You are a friendly AI assistant named Amy. Please provide a concise summary (2-3 sentences) of the following friendly conversation. Focus on what was discussed and how the user seemed.
 
 Conversation:
 ${input.messages.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n')}
 
 Summary:`;
 
-    const { output } = await ai.generate({
+    const response = await ai.generate({
       model: googleAI.model('gemini-1.5-flash'),
       prompt,
     });
 
     return {
-      summary: output.text() || "No summary available for this session.",
+      summary: response.text || "No summary available for this session.",
     };
   }
 );
