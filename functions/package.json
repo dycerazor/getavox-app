@@ -12,7 +12,7 @@
     "genkit:start": "genkit start -- tsx --watch src/genkit-sample.ts"
   },
   "engines": {
-    "node": "24"
+    "node": "22"
   },
   "main": "lib/index.js",
   "dependencies": {
