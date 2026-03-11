@@ -9,7 +9,7 @@ runConfig:
 # Mapping environment variables to secrets for secure deployment.
 # Ensure these secrets are created in the Firebase Console under App Hosting settings.
 env:
-  - variable: GOOGLE_GENAI_API_KEY
-    secret: GOOGLE_GENAI_API_KEY
+  - variable: GEMINI_API_KEY
+    secret: GEMINI_API_KEY
   - variable: SIMLI_API_KEY
     secret: SIMLI_API_KEY
