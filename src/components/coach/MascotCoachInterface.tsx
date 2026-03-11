@@ -1,10 +1,14 @@
+
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { SimliClient } from 'simli-client';
+import { Pose } from '@mediapipe/pose';
+import * as cam from '@mediapipe/camera_utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Mic, MicOff, Play, Square, Loader2, BrainCircuit, Activity, Phone, PhoneOff } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Mic, MicOff, Loader2, BrainCircuit, Activity, Phone, PhoneOff, Camera, User } from 'lucide-react';
 import { getSimliToken } from '@/app/actions/simli';
 import { talkToCoach } from '@/ai/flows/realtime-ai-coaching';
 import { summarizeSession } from '@/ai/flows/summarize-session';
@@ -28,26 +32,103 @@ export function MascotCoachInterface() {
   const [isListening, setIsListening] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [isSummarizing, setIsSummarizing] = useState(false);
+  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
   const [transcription, setTranscription] = useState('');
   const [conversationHistory, setConversationHistory] = useState<{ role: 'user' | 'model', content: string }[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [userPosture, setUserPosture] = useState('good');
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const userVideoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const simliClientRef = useRef<any>(null);
   const recognitionRef = useRef<any>(null);
+  const poseRef = useRef<Pose | null>(null);
+  const cameraRef = useRef<any>(null);
 
+  // Initialize Camera for MediaPipe
+  useEffect(() => {
+    const getCameraPermission = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        setHasCameraPermission(true);
+        if (userVideoRef.current) {
+          userVideoRef.current.srcObject = stream;
+        }
+      } catch (error) {
+        console.error('Error accessing camera:', error);
+        setHasCameraPermission(false);
+      }
+    };
+    getCameraPermission();
+  }, []);
+
+  // Initialize MediaPipe Pose
+  useEffect(() => {
+    if (!hasCameraPermission || !userVideoRef.current) return;
+
+    const pose = new Pose({
+      locateFile: (file) => {
+        return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+      },
+    });
+
+    pose.setOptions({
+      modelComplexity: 1,
+      smoothLandmarks: true,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5,
+    });
+
+    pose.onResults((results) => {
+      if (results.poseLandmarks) {
+        const nose = results.poseLandmarks[0];
+        const leftShoulder = results.poseLandmarks[11];
+        const rightShoulder = results.poseLandmarks[12];
+        const shoulderAvgY = (leftShoulder.y + rightShoulder.y) / 2;
+        
+        // Simple heuristic for slumping
+        if (shoulderAvgY - nose.y < 0.15) {
+          setUserPosture('slouching or leaning forward');
+        } else if (Math.abs(leftShoulder.y - rightShoulder.y) > 0.1) {
+          setUserPosture('leaning to the side');
+        } else {
+          setUserPosture('sitting upright');
+        }
+      }
+    });
+
+    poseRef.current = pose;
+
+    const camera = new cam.Camera(userVideoRef.current, {
+      onFrame: async () => {
+        if (poseRef.current && userVideoRef.current) {
+          await poseRef.current.send({ image: userVideoRef.current });
+        }
+      },
+      width: 640,
+      height: 480,
+    });
+    camera.start();
+    cameraRef.current = camera;
+
+    return () => {
+      camera.stop();
+    };
+  }, [hasCameraPermission]);
+
+  // Speech Recognition Logic
   useEffect(() => {
     if (typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       const recognition = new SpeechRecognition();
-      recognition.continuous = true; // Stay on for a "live" feel
+      recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = 'en-US';
 
       recognition.onresult = (event: any) => {
-        let interimTranscript = '';
         let finalTranscript = '';
+        let interimTranscript = '';
 
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           if (event.results[i].isFinal) {
@@ -67,14 +148,7 @@ export function MascotCoachInterface() {
 
       recognition.onend = () => {
         if (isActive && isListening) {
-          recognition.start(); // Auto-restart for continuous listening
-        }
-      };
-
-      recognition.onerror = (event: any) => {
-        console.error('Speech recognition error:', event.error);
-        if (event.error !== 'no-speech') {
-          setIsListening(false);
+          recognition.start();
         }
       };
 
@@ -104,6 +178,7 @@ export function MascotCoachInterface() {
 
       const response = await talkToCoach({
         userInputText: text,
+        userPosture: userPosture,
         conversationHistory: conversationHistory
       });
 
@@ -126,7 +201,6 @@ export function MascotCoachInterface() {
       }
 
       const pcmData = base64PcmToInt16Array(response.aiResponseAudioUri);
-      
       if (simliClientRef.current) {
         simliClientRef.current.sendAudioData(pcmData);
       }
@@ -139,6 +213,15 @@ export function MascotCoachInterface() {
   };
 
   const startCoaching = useCallback(async () => {
+    if (hasCameraPermission === false) {
+      toast({
+        variant: "destructive",
+        title: "Camera Required",
+        description: "Please enable camera access to join the coaching call.",
+      });
+      return;
+    }
+
     setIsInitializing(true);
     try {
       const token = await getSimliToken();
@@ -168,10 +251,7 @@ export function MascotCoachInterface() {
           status: 'started',
           summary: '',
         });
-        
-        if (sessionRef) {
-          setCurrentSessionId(sessionRef.id);
-        }
+        if (sessionRef) setCurrentSessionId(sessionRef.id);
       }
 
       setIsActive(true);
@@ -180,36 +260,26 @@ export function MascotCoachInterface() {
 
       toast({
         title: "Coach Connected",
-        description: "Your live session has started.",
+        description: "The coach can now see and hear you.",
       });
     } catch (error) {
       console.error("Failed to start coaching:", error);
-      toast({
-        variant: "destructive",
-        title: "Connection Failed",
-        description: "Check your internet and API keys.",
-      });
     } finally {
       setIsInitializing(false);
     }
-  }, [user, db, toast]);
+  }, [user, db, toast, hasCameraPermission]);
 
   const stopCoaching = useCallback(async () => {
     setIsSummarizing(true);
-    const messagesToSummarize = conversationHistory.map(m => ({
-      role: m.role === 'model' ? 'ai' as const : 'user' as const,
-      content: m.content
-    }));
-
-    if (simliClientRef.current) {
-      simliClientRef.current.close();
-      simliClientRef.current = null;
-    }
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-    }
+    if (simliClientRef.current) simliClientRef.current.close();
+    if (recognitionRef.current) recognitionRef.current.stop();
 
     try {
+      const messagesToSummarize = conversationHistory.map(m => ({
+        role: m.role === 'model' ? 'ai' as const : 'user' as const,
+        content: m.content
+      }));
+
       let finalSummary = "";
       if (messagesToSummarize.length > 0) {
         const summaryResult = await summarizeSession({ messages: messagesToSummarize });
@@ -227,7 +297,7 @@ export function MascotCoachInterface() {
 
       toast({
         title: "Session Finished",
-        description: "Your growth progress has been saved.",
+        description: "Growth progress saved.",
       });
     } catch (error) {
       console.error("Failed to summarize session:", error);
@@ -236,7 +306,6 @@ export function MascotCoachInterface() {
       setIsListening(false);
       setIsSummarizing(false);
       setConversationHistory([]);
-      setTranscription('');
       setCurrentSessionId(null);
     }
   }, [user, db, currentSessionId, conversationHistory, toast]);
@@ -254,20 +323,31 @@ export function MascotCoachInterface() {
   };
 
   return (
-    <div className="flex flex-col items-center gap-6 w-full max-w-4xl mx-auto p-4">
-      <div className="relative w-full aspect-video bg-slate-900 rounded-2xl overflow-hidden shadow-2xl border-4 border-white/10 group ring-4 ring-primary/20">
+    <div className="flex flex-col items-center gap-6 w-full max-w-5xl mx-auto p-4">
+      {/* Alert for camera permission */}
+      {hasCameraPermission === false && (
+        <Alert variant="destructive" className="w-full">
+          <Camera className="h-4 w-4" />
+          <AlertTitle>Camera Access Required</AlertTitle>
+          <AlertDescription>
+            Please allow camera access in your browser settings to enable posture tracking and video features.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <div className="relative w-full aspect-video bg-slate-900 rounded-3xl overflow-hidden shadow-2xl border-8 border-white/5 group ring-4 ring-primary/20">
         {!isActive && !isInitializing && !isSummarizing && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-800/80 backdrop-blur-md z-20">
-            <div className="bg-primary/20 p-6 rounded-full mb-6">
-              <BrainCircuit className="w-20 h-20 text-accent animate-pulse" />
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-800/90 backdrop-blur-lg z-20">
+            <div className="bg-primary/20 p-8 rounded-full mb-6">
+              <BrainCircuit className="w-24 h-24 text-accent animate-pulse" />
             </div>
-            <h3 className="text-white text-2xl font-headline font-bold mb-8">Start Live Coaching Call</h3>
+            <h3 className="text-white text-3xl font-headline font-bold mb-8">Start Visual Coaching Call</h3>
             <Button 
               size="lg" 
               onClick={startCoaching}
-              className="bg-accent hover:bg-accent/90 text-accent-foreground font-bold px-10 py-8 rounded-full shadow-2xl hover:scale-105 transition-all flex gap-3 text-xl"
+              className="bg-accent hover:bg-accent/90 text-accent-foreground font-extrabold px-12 py-10 rounded-full shadow-2xl hover:scale-105 transition-all flex gap-4 text-2xl"
             >
-              <Phone className="h-6 w-6 fill-current" />
+              <Phone className="h-8 w-8 fill-current" />
               Join Call
             </Button>
           </div>
@@ -277,102 +357,126 @@ export function MascotCoachInterface() {
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 z-30">
             <Loader2 className="w-16 h-16 text-accent animate-spin mb-6" />
             <p className="text-slate-300 font-bold text-lg tracking-widest uppercase">
-              {isInitializing ? "Connecting to Live Stream..." : "Hanging up & Saving..."}
+              {isInitializing ? "Initializing Vision & AI..." : "Hanging up & Saving..."}
             </p>
           </div>
         )}
 
+        {/* AI Video Feed */}
         <video 
           ref={videoRef} 
           autoPlay 
           playsInline 
           className={cn("w-full h-full object-cover", !isActive && "opacity-0")} 
         />
+
+        {/* User Video Feed (PiP Style) */}
+        <div className={cn(
+          "absolute bottom-6 right-6 w-48 aspect-video rounded-xl overflow-hidden border-2 border-white/20 shadow-2xl transition-opacity duration-500",
+          !isActive && "opacity-0"
+        )}>
+          <video ref={userVideoRef} autoPlay muted playsInline className="w-full h-full object-cover mirror" />
+          <div className="absolute bottom-2 left-2 bg-black/40 backdrop-blur-md px-2 py-1 rounded text-[10px] text-white flex items-center gap-1">
+            <User className="w-3 h-3" /> You
+          </div>
+        </div>
         
         <audio ref={audioRef} autoPlay />
 
         {isActive && (
           <>
-            <div className="absolute top-6 left-6 flex gap-3 z-10">
-              <Badge variant="secondary" className="bg-red-500 text-white border-none px-3 py-1 flex items-center gap-2 animate-pulse font-bold">
+            <div className="absolute top-8 left-8 flex gap-4 z-10">
+              <Badge variant="secondary" className="bg-red-500 text-white border-none px-4 py-2 flex items-center gap-2 animate-pulse font-bold text-sm shadow-lg">
                 <div className="w-2 h-2 rounded-full bg-white" /> LIVE
               </Badge>
+              <Badge variant="outline" className="bg-black/40 text-white border-white/20 backdrop-blur-md px-3 py-1 flex items-center gap-2">
+                <Activity className="w-3 h-3 text-accent" /> {userPosture}
+              </Badge>
               {isThinking && (
-                <Badge variant="outline" className="bg-accent/20 text-accent border-accent/40 backdrop-blur-md">
-                  AI Responding...
+                <Badge className="bg-accent text-accent-foreground border-none">
+                  Coach is reflecting...
                 </Badge>
               )}
             </div>
 
-            <div className="absolute bottom-10 left-10 right-10 flex flex-col gap-4 pointer-events-none">
+            <div className="absolute bottom-10 left-10 right-64 flex flex-col gap-4 pointer-events-none">
               {transcription && (
-                <div className="bg-black/60 backdrop-blur-xl p-6 rounded-2xl border border-white/10 max-w-2xl animate-in slide-in-from-bottom-4">
-                  <p className="text-white text-lg font-medium leading-tight">
+                <div className="bg-black/60 backdrop-blur-2xl p-6 rounded-2xl border border-white/10 max-w-xl animate-in fade-in slide-in-from-bottom-4">
+                  <p className="text-white text-lg font-medium leading-relaxed">
                     {transcription}
                   </p>
                 </div>
               )}
             </div>
 
-            <div className="absolute right-6 top-6 flex flex-col gap-4 z-10">
+            <div className="absolute right-8 top-8 flex flex-col gap-4 z-10">
               <Button 
                 variant="destructive" 
                 size="icon" 
                 onClick={stopCoaching}
-                className="rounded-full h-14 w-14 shadow-2xl hover:scale-110 transition-transform bg-red-600 hover:bg-red-700"
+                className="rounded-full h-16 w-16 shadow-2xl hover:scale-110 transition-transform bg-red-600 hover:bg-red-700 ring-4 ring-red-500/20"
               >
-                <PhoneOff className="h-6 w-6 fill-current" />
+                <PhoneOff className="h-8 w-8 fill-current" />
               </Button>
             </div>
           </>
         )}
       </div>
 
-      <Card className="w-full bg-white/40 border-none shadow-xl backdrop-blur-xl">
-        <CardContent className="p-8 flex items-center justify-between">
-          <div className="flex items-center gap-6">
+      <Card className="w-full bg-white/60 border-none shadow-2xl backdrop-blur-3xl rounded-3xl overflow-hidden">
+        <CardContent className="p-10 flex flex-col md:flex-row items-center justify-between gap-8">
+          <div className="flex items-center gap-8 w-full md:w-auto">
             <Button
               size="lg"
               variant={isListening ? "destructive" : "secondary"}
               disabled={!isActive || isThinking || isSummarizing}
               onClick={toggleListening}
               className={cn(
-                "rounded-full h-20 w-20 shadow-2xl transition-all duration-500",
-                isListening && "animate-pulse ring-8 ring-red-500/20",
+                "rounded-full h-24 w-24 shadow-2xl transition-all duration-500 hover:scale-105",
+                isListening && "animate-pulse ring-[12px] ring-red-500/20",
                 (!isActive || isSummarizing) && "opacity-20 grayscale"
               )}
             >
-              {isListening ? <MicOff className="h-10 w-10" /> : <Mic className="h-10 w-10" />}
+              {isListening ? <MicOff className="h-12 w-12" /> : <Mic className="h-12 w-12" />}
             </Button>
             
             <div className="flex flex-col">
-              <h4 className="font-headline font-extrabold text-2xl text-slate-900">
-                {isActive ? (isListening ? "Coach is Listening" : "Microphone Muted") : "Disconnected"}
+              <h4 className="font-headline font-extrabold text-3xl text-slate-900 mb-1">
+                {isActive ? (isListening ? "Listening..." : "Paused") : "Ready for Call"}
               </h4>
-              <p className="text-slate-500 font-medium">
-                {isActive ? (isListening ? "Speak naturally to your coach." : "Unmute to continue the conversation.") : "Join the call to start your session."}
+              <p className="text-slate-500 text-lg font-medium">
+                {isActive ? (isListening ? "The coach is analyzing your speech and posture." : "Unmute to resume.") : "Join to experience visual AI coaching."}
               </p>
             </div>
           </div>
 
           {isActive && (
-            <div className="hidden md:flex items-center gap-4">
-              <div className="flex gap-1">
-                {[1,2,3,4].map(i => (
-                  <div 
-                    key={i} 
-                    className={cn(
-                      "w-1 bg-primary rounded-full transition-all duration-300",
-                      isListening ? "animate-bounce" : "h-2",
-                      i === 1 && "h-4 delay-75",
-                      i === 2 && "h-8 delay-150",
-                      i === 3 && "h-6 delay-300",
-                      i === 4 && "h-4 delay-450"
-                    )}
-                  />
-                ))}
+            <div className="flex items-center gap-6 bg-slate-100/50 p-6 rounded-2xl border border-slate-200 w-full md:w-auto">
+              <div className="flex flex-col items-center">
+                <span className="text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-tighter">Audio Input</span>
+                <div className="flex items-end gap-1.5 h-12">
+                  {[1,2,3,4,5,6].map(i => (
+                    <div 
+                      key={i} 
+                      className={cn(
+                        "w-1.5 bg-primary rounded-full transition-all duration-300",
+                        isListening ? "animate-bounce" : "h-2",
+                        i === 1 && "h-4 delay-75",
+                        i === 2 && "h-10 delay-150",
+                        i === 3 && "h-6 delay-300",
+                        i === 4 && "h-12 delay-450",
+                        i === 5 && "h-8 delay-200",
+                        i === 6 && "h-4 delay-100"
+                      )}
+                    />
+                  ))}
+                </div>
               </div>
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Audio Active</span>
+              <div className="w-[1px] h-12 bg-slate-200" />
+              <div className="flex flex-col">
+                <span className="text-[10px] font-bold text-slate-400 uppercase mb-1 tracking-tighter">Posture Status</span>
+                <span className="text-primary font-bold capitalize">{userPosture}</span>
+              </div>
             </div>
           )}
         </CardContent>

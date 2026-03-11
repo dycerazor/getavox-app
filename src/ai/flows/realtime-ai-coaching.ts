@@ -1,8 +1,10 @@
+
 'use server';
 /**
  * @fileOverview This file implements a Genkit flow for real-time AI coaching.
  * It is optimized for a "Gemini Live" experience, using high-speed models
  * and natural-sounding TTS to simulate a live videoconference.
+ * Now includes posture and visual context awareness.
  */
 
 import { ai } from '@/ai/genkit';
@@ -11,6 +13,7 @@ import { googleAI } from '@genkit-ai/google-genai';
 
 const ConversationTurnInputSchema = z.object({
   userInputText: z.string().describe("The user's spoken input transcribed into text."),
+  userPosture: z.string().optional().describe("A textual description of the user's detected posture or behavior."),
   conversationHistory: z.array(
     z.object({ role: z.enum(['user', 'model']), content: z.string() })
   ).optional().describe("Previous turns of the conversation for context."),
@@ -25,7 +28,6 @@ export type ConversationTurnOutput = z.infer<typeof ConversationTurnOutputSchema
 
 /**
  * Resamples 16-bit signed little-endian PCM audio data from 24kHz to 16kHz.
- * Required for the Simli client input.
  */
 function resamplePcm24To16(inputBuffer: Buffer): Buffer {
   const inputSampleRate = 24000;
@@ -69,11 +71,20 @@ const realtimeAiCoachingFlow = ai.defineFlow(
     outputSchema: ConversationTurnOutputSchema,
   },
   async (input) => {
-    // We use a specific system instruction to enforce the "Live" videoconference personality.
     const systemInstruction = `You are a world-class AI Life Coach in a live videoconference. 
     Your tone is empathetic, professional, and encouraging. 
+    You can SEE the user through their camera.
+    
     CRITICAL: Keep your responses CONCISE and conversational (1-3 sentences maximum). 
-    Do not use lists or complex formatting. Speak naturally as if you are looking at the user through a camera.`;
+    Speak naturally as if you are looking at the user through a camera.
+
+    CURRENT VISUAL CONTEXT:
+    User's Posture: ${input.userPosture || "Unknown"}
+
+    INSTRUCTIONS:
+    - If the user is slouching or has poor posture, gently mention it as part of your coaching.
+    - If they seem restless or leaning too far in, adjust your advice accordingly.
+    - Maintain the flow of the conversation while being observant of their physical presence.`;
 
     const messages = [
       { role: 'system', content: systemInstruction },
@@ -81,18 +92,16 @@ const realtimeAiCoachingFlow = ai.defineFlow(
       { role: 'user', content: input.userInputText },
     ];
 
-    // Generate a text response using Gemini 2.5 Flash for maximum responsiveness
     const { output: llmResponse } = await ai.generate({
       model: googleAI.model('gemini-2.5-flash'),
       prompt: messages,
       config: {
         temperature: 0.7,
-        maxOutputTokens: 150, // Enforce brevity at the model level
+        maxOutputTokens: 150,
       },
     });
     const aiResponseText = llmResponse.text();
 
-    // Convert to high-quality "Live" voice
     const { media } = await ai.generate({
       model: googleAI.model('gemini-2.5-flash-preview-tts'),
       config: {
