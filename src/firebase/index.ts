@@ -1,38 +1,48 @@
 'use client';
 
-import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore'
+import { firebaseConfig } from '@/firebase/config';
 
 /**
- * Initializes Firebase services.
+ * Initializes Firebase services with a defensive multi-stage fallback.
  * 
- * It first attempts to initialize using environment variables (standard for Firebase App Hosting),
- * and falls back to the provided firebaseConfig object if that fails. This ensures the app
- * works correctly in both local development and various deployment environments.
+ * 1. Checks for existing initialization to avoid 'duplicate app' errors.
+ * 2. Attempts automatic initialization (standard for Firebase App Hosting).
+ * 3. Falls back to explicit firebaseConfig for local dev or misconfigured environments.
  */
 export function initializeFirebase() {
-  if (!getApps().length) {
-    let firebaseApp;
-    try {
-      // Attempt to initialize via Firebase App Hosting environment variables
-      firebaseApp = initializeApp();
-    } catch (e) {
-      // Fallback to the firebaseConfig object if automatic initialization fails.
-      // The re-throw on the server was removed to prevent SSR crashes when
-      // running outside of a specifically configured App Hosting environment.
-      if (process.env.NODE_ENV === "production" && typeof window !== 'undefined') {
-        console.warn('Automatic initialization failed. Falling back to firebase config object.', e);
-      }
-      firebaseApp = initializeApp(firebaseConfig);
-    }
-
-    return getSdks(firebaseApp);
+  // Return existing app if already initialized
+  const apps = getApps();
+  if (apps.length > 0) {
+    return getSdks(getApp());
   }
 
-  // If already initialized, return the SDKs with the already initialized App
-  return getSdks(getApp());
+  let app: FirebaseApp;
+
+  try {
+    // Stage 1: Attempt automatic initialization (No arguments)
+    // This is the preferred method for Firebase App Hosting
+    app = initializeApp();
+  } catch (autoInitError: any) {
+    // Stage 2: Fallback to manual configuration
+    // We catch 'no-options' errors and other initialization failures
+    try {
+      app = initializeApp(firebaseConfig);
+    } catch (manualInitError: any) {
+      // Final Fallback: If everything fails, try to return the default app if it somehow exists
+      if (getApps().length > 0) {
+        app = getApp();
+      } else {
+        // Log the failure to help debugging in the cloud console
+        console.error('CRITICAL: Firebase failed to initialize with all methods.', manualInitError);
+        throw manualInitError;
+      }
+    }
+  }
+
+  return getSdks(app);
 }
 
 export function getSdks(firebaseApp: FirebaseApp) {

@@ -1,8 +1,11 @@
 import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Enable standalone output for optimized deployment on App Hosting
+  output: 'standalone',
+  
   typescript: {
+    // Still ignoring to prevent build blocks, but logs should be checked
     ignoreBuildErrors: true,
   },
   eslint: {
