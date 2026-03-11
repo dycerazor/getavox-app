@@ -8,7 +8,7 @@ import '@mediapipe/camera_utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Mic, MicOff, Loader2, BrainCircuit, Activity, Phone, PhoneOff, Camera as CameraIcon, User } from 'lucide-react';
+import { Mic, MicOff, Loader2, BrainCircuit, Activity, Phone, PhoneOff, Camera as CameraIcon, User, Video, VideoOff } from 'lucide-react';
 import { getSimliToken } from '@/app/actions/simli';
 import { talkToCoach } from '@/ai/flows/realtime-ai-coaching';
 import { summarizeSession } from '@/ai/flows/summarize-session';
@@ -33,6 +33,7 @@ export function MascotCoachInterface() {
   const [isThinking, setIsThinking] = useState(false);
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
+  const [isVisionEnabled, setIsVisionEnabled] = useState(true);
   const [transcription, setTranscription] = useState('');
   const [conversationHistory, setConversationHistory] = useState<{ role: 'user' | 'model', content: string }[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -46,28 +47,16 @@ export function MascotCoachInterface() {
   const poseRef = useRef<any>(null);
   const cameraRef = useRef<any>(null);
 
-  // Initialize Camera for MediaPipe
+  // Initialize MediaPipe Pose and Camera only when active and permission is granted
   useEffect(() => {
-    const getCameraPermission = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        setHasCameraPermission(true);
-        if (userVideoRef.current) {
-          userVideoRef.current.srcObject = stream;
-        }
-      } catch (error) {
-        console.error('Error accessing camera:', error);
-        setHasCameraPermission(false);
+    if (!isActive || !hasCameraPermission || !userVideoRef.current) {
+      if (cameraRef.current) {
+        cameraRef.current.stop();
+        cameraRef.current = null;
       }
-    };
-    getCameraPermission();
-  }, []);
+      return;
+    }
 
-  // Initialize MediaPipe Pose
-  useEffect(() => {
-    if (!hasCameraPermission || !userVideoRef.current) return;
-
-    // Safely access Pose and Camera from global window as they are side-effect imports
     const PoseClass = (window as any).Pose;
     const CameraClass = (window as any).Camera;
 
@@ -90,13 +79,12 @@ export function MascotCoachInterface() {
     });
 
     pose.onResults((results: any) => {
-      if (results.poseLandmarks) {
+      if (results.poseLandmarks && isVisionEnabled) {
         const nose = results.poseLandmarks[0];
         const leftShoulder = results.poseLandmarks[11];
         const rightShoulder = results.poseLandmarks[12];
         const shoulderAvgY = (leftShoulder.y + rightShoulder.y) / 2;
         
-        // Simple heuristic for slumping
         if (shoulderAvgY - nose.y < 0.15) {
           setUserPosture('slouching or leaning forward');
         } else if (Math.abs(leftShoulder.y - rightShoulder.y) > 0.1) {
@@ -109,26 +97,26 @@ export function MascotCoachInterface() {
 
     poseRef.current = pose;
 
-    if (userVideoRef.current) {
-        const camera = new CameraClass(userVideoRef.current, {
-            onFrame: async () => {
-                if (poseRef.current && userVideoRef.current) {
-                    await poseRef.current.send({ image: userVideoRef.current });
-                }
-            },
-            width: 640,
-            height: 480,
-        });
-        camera.start();
-        cameraRef.current = camera;
-    }
+    const camera = new CameraClass(userVideoRef.current, {
+        onFrame: async () => {
+            if (poseRef.current && userVideoRef.current && isVisionEnabled) {
+                await poseRef.current.send({ image: userVideoRef.current });
+            }
+        },
+        width: 640,
+        height: 480,
+    });
+    
+    camera.start();
+    cameraRef.current = camera;
 
     return () => {
       if (cameraRef.current) {
         cameraRef.current.stop();
+        cameraRef.current = null;
       }
     };
-  }, [hasCameraPermission]);
+  }, [isActive, hasCameraPermission, isVisionEnabled]);
 
   // Speech Recognition Logic
   useEffect(() => {
@@ -191,7 +179,7 @@ export function MascotCoachInterface() {
 
       const response = await talkToCoach({
         userInputText: text,
-        userPosture: userPosture,
+        userPosture: isVisionEnabled ? userPosture : "Vision Disabled",
         conversationHistory: conversationHistory
       });
 
@@ -226,7 +214,19 @@ export function MascotCoachInterface() {
   };
 
   const startCoaching = useCallback(async () => {
-    if (hasCameraPermission === false) {
+    setIsInitializing(true);
+    
+    // Request Camera Permission only when joining
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      setHasCameraPermission(true);
+      if (userVideoRef.current) {
+        userVideoRef.current.srcObject = stream;
+      }
+    } catch (error) {
+      console.error('Error accessing camera:', error);
+      setHasCameraPermission(false);
+      setIsInitializing(false);
       toast({
         variant: "destructive",
         title: "Camera Required",
@@ -235,7 +235,6 @@ export function MascotCoachInterface() {
       return;
     }
 
-    setIsInitializing(true);
     try {
       const token = await getSimliToken();
       if (!token) throw new Error("Could not retrieve Simli session token");
@@ -280,12 +279,13 @@ export function MascotCoachInterface() {
     } finally {
       setIsInitializing(false);
     }
-  }, [user, db, toast, hasCameraPermission]);
+  }, [user, db, toast]);
 
   const stopCoaching = useCallback(async () => {
     setIsSummarizing(true);
     if (simliClientRef.current) simliClientRef.current.close();
     if (recognitionRef.current) recognitionRef.current.stop();
+    if (cameraRef.current) cameraRef.current.stop();
 
     try {
       const messagesToSummarize = conversationHistory.map(m => ({
@@ -320,6 +320,7 @@ export function MascotCoachInterface() {
       setIsSummarizing(false);
       setConversationHistory([]);
       setCurrentSessionId(null);
+      setHasCameraPermission(null);
     }
   }, [user, db, currentSessionId, conversationHistory, toast]);
 
@@ -335,19 +336,15 @@ export function MascotCoachInterface() {
     }
   };
 
+  const toggleVision = () => {
+    setIsVisionEnabled(!isVisionEnabled);
+    if (isVisionEnabled) {
+      setUserPosture('Vision Paused');
+    }
+  };
+
   return (
     <div className="flex flex-col items-center gap-6 w-full max-w-5xl mx-auto p-4">
-      {/* Alert for camera permission */}
-      {hasCameraPermission === false && (
-        <Alert variant="destructive" className="w-full">
-          <CameraIcon className="h-4 w-4" />
-          <AlertTitle>Camera Access Required</AlertTitle>
-          <AlertDescription>
-            Please allow camera access in your browser settings to enable posture tracking and video features.
-          </AlertDescription>
-        </Alert>
-      )}
-
       <div className="relative w-full aspect-video bg-slate-900 rounded-3xl overflow-hidden shadow-2xl border-8 border-white/5 group ring-4 ring-primary/20">
         {!isActive && !isInitializing && !isSummarizing && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-800/90 backdrop-blur-lg z-20">
@@ -386,7 +383,7 @@ export function MascotCoachInterface() {
         {/* User Video Feed (PiP Style) */}
         <div className={cn(
           "absolute bottom-6 right-6 w-48 aspect-video rounded-xl overflow-hidden border-2 border-white/20 shadow-2xl transition-opacity duration-500",
-          !isActive && "opacity-0"
+          (!isActive || !isVisionEnabled) && "opacity-0"
         )}>
           <video ref={userVideoRef} autoPlay muted playsInline className="w-full h-full object-cover mirror" />
           <div className="absolute bottom-2 left-2 bg-black/40 backdrop-blur-md px-2 py-1 rounded text-[10px] text-white flex items-center gap-1">
@@ -403,7 +400,7 @@ export function MascotCoachInterface() {
                 <div className="w-2 h-2 rounded-full bg-white" /> LIVE
               </Badge>
               <Badge variant="outline" className="bg-black/40 text-white border-white/20 backdrop-blur-md px-3 py-1 flex items-center gap-2">
-                <Activity className="w-3 h-3 text-accent" /> {userPosture}
+                <Activity className="w-3 h-3 text-accent" /> {isVisionEnabled ? userPosture : "Vision Paused"}
               </Badge>
               {isThinking && (
                 <Badge className="bg-accent text-accent-foreground border-none">
@@ -430,6 +427,18 @@ export function MascotCoachInterface() {
                 className="rounded-full h-16 w-16 shadow-2xl hover:scale-110 transition-transform bg-red-600 hover:bg-red-700 ring-4 ring-red-500/20"
               >
                 <PhoneOff className="h-8 w-8 fill-current" />
+              </Button>
+              
+              <Button
+                variant="secondary"
+                size="icon"
+                onClick={toggleVision}
+                className={cn(
+                  "rounded-full h-12 w-12 shadow-xl backdrop-blur-md transition-all",
+                  isVisionEnabled ? "bg-white/20 text-white" : "bg-red-500 text-white"
+                )}
+              >
+                {isVisionEnabled ? <Video className="h-6 w-6" /> : <VideoOff className="h-6 w-6" />}
               </Button>
             </div>
           </>
@@ -488,7 +497,7 @@ export function MascotCoachInterface() {
               <div className="w-[1px] h-12 bg-slate-200" />
               <div className="flex flex-col">
                 <span className="text-[10px] font-bold text-slate-400 uppercase mb-1 tracking-tighter">Posture Status</span>
-                <span className="text-primary font-bold capitalize">{userPosture}</span>
+                <span className="text-primary font-bold capitalize">{isVisionEnabled ? userPosture : "Paused"}</span>
               </div>
             </div>
           )}
