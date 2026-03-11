@@ -1,14 +1,14 @@
-
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { SimliClient } from 'simli-client';
-import { Pose } from '@mediapipe/pose';
-import * as cam from '@mediapipe/camera_utils';
+// Import MediaPipe as side-effects because they often lack proper ESM exports
+import '@mediapipe/pose';
+import '@mediapipe/camera_utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Mic, MicOff, Loader2, BrainCircuit, Activity, Phone, PhoneOff, Camera, User } from 'lucide-react';
+import { Mic, MicOff, Loader2, BrainCircuit, Activity, Phone, PhoneOff, Camera as CameraIcon, User } from 'lucide-react';
 import { getSimliToken } from '@/app/actions/simli';
 import { talkToCoach } from '@/ai/flows/realtime-ai-coaching';
 import { summarizeSession } from '@/ai/flows/summarize-session';
@@ -43,7 +43,7 @@ export function MascotCoachInterface() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const simliClientRef = useRef<any>(null);
   const recognitionRef = useRef<any>(null);
-  const poseRef = useRef<Pose | null>(null);
+  const poseRef = useRef<any>(null);
   const cameraRef = useRef<any>(null);
 
   // Initialize Camera for MediaPipe
@@ -67,8 +67,17 @@ export function MascotCoachInterface() {
   useEffect(() => {
     if (!hasCameraPermission || !userVideoRef.current) return;
 
-    const pose = new Pose({
-      locateFile: (file) => {
+    // Safely access Pose and Camera from global window as they are side-effect imports
+    const PoseClass = (window as any).Pose;
+    const CameraClass = (window as any).Camera;
+
+    if (!PoseClass || !CameraClass) {
+      console.warn('MediaPipe Pose or Camera not found on window object.');
+      return;
+    }
+
+    const pose = new PoseClass({
+      locateFile: (file: string) => {
         return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
       },
     });
@@ -80,7 +89,7 @@ export function MascotCoachInterface() {
       minTrackingConfidence: 0.5,
     });
 
-    pose.onResults((results) => {
+    pose.onResults((results: any) => {
       if (results.poseLandmarks) {
         const nose = results.poseLandmarks[0];
         const leftShoulder = results.poseLandmarks[11];
@@ -100,20 +109,24 @@ export function MascotCoachInterface() {
 
     poseRef.current = pose;
 
-    const camera = new cam.Camera(userVideoRef.current, {
-      onFrame: async () => {
-        if (poseRef.current && userVideoRef.current) {
-          await poseRef.current.send({ image: userVideoRef.current });
-        }
-      },
-      width: 640,
-      height: 480,
-    });
-    camera.start();
-    cameraRef.current = camera;
+    if (userVideoRef.current) {
+        const camera = new CameraClass(userVideoRef.current, {
+            onFrame: async () => {
+                if (poseRef.current && userVideoRef.current) {
+                    await poseRef.current.send({ image: userVideoRef.current });
+                }
+            },
+            width: 640,
+            height: 480,
+        });
+        camera.start();
+        cameraRef.current = camera;
+    }
 
     return () => {
-      camera.stop();
+      if (cameraRef.current) {
+        cameraRef.current.stop();
+      }
     };
   }, [hasCameraPermission]);
 
@@ -327,7 +340,7 @@ export function MascotCoachInterface() {
       {/* Alert for camera permission */}
       {hasCameraPermission === false && (
         <Alert variant="destructive" className="w-full">
-          <Camera className="h-4 w-4" />
+          <CameraIcon className="h-4 w-4" />
           <AlertTitle>Camera Access Required</AlertTitle>
           <AlertDescription>
             Please allow camera access in your browser settings to enable posture tracking and video features.
