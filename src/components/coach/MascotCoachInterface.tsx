@@ -1,14 +1,14 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { SimliClient } from 'simli-client';
+import { SimliClient, LogLevel } from 'simli-client';
 // Side-effect imports for MediaPipe legacy modules
 import '@mediapipe/pose';
 import '@mediapipe/camera_utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Mic, MicOff, Loader2, BrainCircuit, Activity, Phone, PhoneOff, User, Video, VideoOff } from 'lucide-react';
-import { getSimliToken } from '@/app/actions/simli';
+import { getSimliToken, getIceServers } from '@/app/actions/simli';
 import { talkToCoach } from '@/ai/flows/realtime-ai-coaching';
 import { summarizeSession } from '@/ai/flows/summarize-session';
 import { base64PcmToInt16Array } from '@/lib/simli-utils';
@@ -18,8 +18,6 @@ import { useUser, useFirestore } from '@/firebase';
 import { collection, doc, serverTimestamp } from 'firebase/firestore';
 import { addDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { useToast } from '@/hooks/use-toast';
-
-const DEFAULT_FACE_ID = "tmp_face_id_placeholder";
 
 export function MascotCoachInterface() {
   const { user } = useUser();
@@ -239,27 +237,28 @@ export function MascotCoachInterface() {
 
     try {
       setBufferingProgress(10);
-      const token = await getSimliToken();
-      if (!token) {
-        throw new Error("Could not retrieve Simli session token. Ensure SIMLI_API_KEY is set in your environment variables.");
+      const [token, iceServers] = await Promise.all([getSimliToken(), getIceServers()]);
+      if (!token || !iceServers) {
+        throw new Error("Could not retrieve Simli session token or ICE servers. Ensure SIMLI_API_KEY is set in your environment variables.");
       }
       setBufferingProgress(25);
 
-      const client = new SimliClient();
+      if (!videoRef.current || !audioRef.current) {
+        throw new Error("Video or audio element is not available.");
+      }
+
+      const client = new SimliClient(
+        token,
+        videoRef.current, 
+        audioRef.current, 
+        iceServers,
+        LogLevel.DEBUG, 
+        "p2p"
+      );
       simliClientRef.current = client;
 
-      client.Initialize({
-        sessionToken: token,
-        faceId: DEFAULT_FACE_ID,
-        handleAudioStream: (stream: MediaStream) => {
-          if (audioRef.current) audioRef.current.srcObject = stream;
-        },
-        handleVideoStream: (stream: MediaStream) => {
-          if (videoRef.current) videoRef.current.srcObject = stream;
-        },
-        onProgress: (progress: number) => { // Assuming onProgress provides a 0-1 value
-          setBufferingProgress(25 + (progress * 75)); // Scale progress to be from 25% to 100%
-        }
+      client.on('start', () => {
+        setBufferingProgress(100);
       });
 
       await client.start();
@@ -284,12 +283,18 @@ export function MascotCoachInterface() {
         description: "The coach can now see and hear you.",
       });
     } catch (error) {
-      console.error("Failed to start coaching:", error);
-      toast({
-        variant: "destructive",
-        title: "Initialization Failed",
-        description: error instanceof Error ? error.message : "An unknown error occurred. Please check the console for details.",
-      });
+        console.error("Failed to start coaching:", error);
+        const errorMessage = error instanceof Error ? error.message : "An unknown error occurred. Please check the console for details.";
+        
+        // Fallback alert to guarantee the error is seen
+        alert(errorMessage);
+
+        toast({
+          variant: "destructive",
+          title: "Initialization Failed",
+          description: errorMessage,
+          duration: 9000, // Make the toast stay for 9 seconds
+        });
     } finally {
       setIsInitializing(false);
       setBufferingProgress(0);
