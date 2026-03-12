@@ -1,1 +1,8 @@
-export const firebaseConfig = {"projectId":"getavox-app","appId":"1:642792349615:web:411977a59944f4f782195a","storageBucket":"getavox-app.firebasestorage.app","apiKey":"AIzaSyCOe9AH2plN2-NEZohT-cUdBUNLVN1r5tk","authDomain":"getavox-app.firebaseapp.com","messagingSenderId":"642792349615"};
+export const firebaseConfig = {
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+};

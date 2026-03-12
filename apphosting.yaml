@@ -1,15 +1,13 @@
-# Settings to manage and configure a Firebase App Hosting backend.
-# https://firebase.google.com/docs/app-hosting/configure
+run:
+  build: 
+    - npm install
+    - npm run build
+  start: npm run start
 
-runConfig:
-  cpu: 1
-  memoryMiB: 1024
-  maxInstances: 1
-
-# Mapping environment variables to secrets for secure deployment.
-# Ensure these secrets are created in the Firebase Console under App Hosting settings.
 env:
   - variable: GEMINI_API_KEY
     secret: GEMINI_API_KEY
   - variable: SIMLI_API_KEY
     secret: SIMLI_API_KEY
+  - variable: SIMLI_FACE_ID
+    secret: SIMLI_FACE_ID
