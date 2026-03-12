@@ -79,3 +79,26 @@
 [error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
 [debug] [2026-03-12T00:43:56.197Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform","https://www.googleapis.com/auth/userinfo.email"]
 [debug] [2026-03-12T00:43:56.202Z] > authorizing via signed-in user (getavoxenglish@gmail.com)
+[error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
+[error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
+[debug] [2026-03-12T01:34:39.130Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform","https://www.googleapis.com/auth/userinfo.email"]
+[debug] [2026-03-12T01:34:39.130Z] > authorizing via signed-in user (getavoxenglish@gmail.com)
+[debug] [2026-03-12T01:34:39.139Z] Checked if tokens are valid: false, expires at: 1773278922632
+[debug] [2026-03-12T01:34:39.139Z] Checked if tokens are valid: false, expires at: 1773278922632
+[debug] [2026-03-12T01:34:39.139Z] > refreshing access token with scopes: []
+[debug] [2026-03-12T01:34:39.150Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2026-03-12T01:34:39.150Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-03-12T01:34:39.207Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2026-03-12T01:34:39.207Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-03-12T01:34:39.239Z] >>> [apiv2][query] GET https://cloudbilling.googleapis.com/v1/projects/getavox-app/billingInfo [none]
+[debug] [2026-03-12T01:34:39.320Z] <<< [apiv2][status] GET https://cloudbilling.googleapis.com/v1/projects/getavox-app/billingInfo 200
+[debug] [2026-03-12T01:34:39.323Z] <<< [apiv2][body] GET https://cloudbilling.googleapis.com/v1/projects/getavox-app/billingInfo {"name":"projects/getavox-app/billingInfo","projectId":"getavox-app","billingAccountName":"billingAccounts/01E3C2-A2153A-37923C","billingEnabled":true}
+[error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
+[error] Failed to fetch Firebase Project from Studio Workspace because WORKSPACE_SLUG environment variable is empty
+[debug] [2026-03-12T01:34:39.328Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform","https://www.googleapis.com/auth/userinfo.email"]
+[debug] [2026-03-12T01:34:39.329Z] > authorizing via signed-in user (getavoxenglish@gmail.com)
+[debug] [2026-03-12T01:34:39.329Z] Checked if tokens are valid: true, expires at: 1773282878211
+[debug] [2026-03-12T01:34:39.329Z] Checked if tokens are valid: true, expires at: 1773282878211
+[debug] [2026-03-12T01:34:39.329Z] >>> [apiv2][query] GET https://cloudbilling.googleapis.com/v1/projects/getavox-app/billingInfo [none]
+[debug] [2026-03-12T01:34:39.390Z] <<< [apiv2][status] GET https://cloudbilling.googleapis.com/v1/projects/getavox-app/billingInfo 200
+[debug] [2026-03-12T01:34:39.393Z] <<< [apiv2][body] GET https://cloudbilling.googleapis.com/v1/projects/getavox-app/billingInfo {"name":"projects/getavox-app/billingInfo","projectId":"getavox-app","billingAccountName":"billingAccounts/01E3C2-A2153A-37923C","billingEnabled":true}

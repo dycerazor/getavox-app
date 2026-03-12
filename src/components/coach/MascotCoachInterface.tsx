@@ -14,12 +14,13 @@ import { summarizeSession } from '@/ai/flows/summarize-session';
 import { base64PcmToInt16Array } from '@/lib/simli-utils';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { useUser, useFirestore } from '@/firebase';
+import { useUser, useFirestore, useEnsureAnonymousUser } from '@/firebase';
 import { collection, doc, serverTimestamp } from 'firebase/firestore';
 import { addDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { useToast } from '@/hooks/use-toast';
 
 export function MascotCoachInterface() {
+  useEnsureAnonymousUser();
   const { user } = useUser();
   const db = useFirestore();
   const { toast } = useToast();
