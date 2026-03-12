@@ -37,6 +37,7 @@ export function MascotCoachInterface() {
   const [conversationHistory, setConversationHistory] = useState<{ role: 'user' | 'model', content: string }[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [userPosture, setUserPosture] = useState('good');
+  const [bufferingProgress, setBufferingProgress] = useState(0);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const userVideoRef = useRef<HTMLVideoElement>(null);
@@ -215,6 +216,7 @@ export function MascotCoachInterface() {
 
   const startCoaching = useCallback(async () => {
     setIsInitializing(true);
+    setBufferingProgress(0);
     
     // Request Camera Permission only on Join
     try {
@@ -236,8 +238,12 @@ export function MascotCoachInterface() {
     }
 
     try {
+      setBufferingProgress(10);
       const token = await getSimliToken();
-      if (!token) throw new Error("Could not retrieve Simli session token");
+      if (!token) {
+        throw new Error("Could not retrieve Simli session token. Ensure SIMLI_API_KEY is set in your environment variables.");
+      }
+      setBufferingProgress(25);
 
       const client = new SimliClient();
       simliClientRef.current = client;
@@ -251,6 +257,9 @@ export function MascotCoachInterface() {
         handleVideoStream: (stream: MediaStream) => {
           if (videoRef.current) videoRef.current.srcObject = stream;
         },
+        onProgress: (progress: number) => { // Assuming onProgress provides a 0-1 value
+          setBufferingProgress(25 + (progress * 75)); // Scale progress to be from 25% to 100%
+        }
       });
 
       await client.start();
@@ -276,8 +285,14 @@ export function MascotCoachInterface() {
       });
     } catch (error) {
       console.error("Failed to start coaching:", error);
+      toast({
+        variant: "destructive",
+        title: "Initialization Failed",
+        description: error instanceof Error ? error.message : "An unknown error occurred. Please check the console for details.",
+      });
     } finally {
       setIsInitializing(false);
+      setBufferingProgress(0);
     }
   }, [user, db, toast]);
 
@@ -367,9 +382,15 @@ export function MascotCoachInterface() {
         {(isInitializing || isSummarizing) && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 z-30">
             <Loader2 className="w-16 h-16 text-accent animate-spin mb-6" />
-            <p className="text-slate-300 font-bold text-lg tracking-widest uppercase">
+            <p className="text-slate-300 font-bold text-lg tracking-widest uppercase mb-4">
               {isInitializing ? "Initializing Vision & AI..." : "Hanging up & Saving..."}
             </p>
+            {isInitializing && (
+              <div className="w-1/2 bg-slate-700 rounded-full h-4 relative">
+                <div className="bg-accent h-4 rounded-full transition-all duration-300" style={{ width: `${bufferingProgress}%` }}></div>
+                <span className="absolute inset-0 text-center text-xs font-bold text-white flex items-center justify-center">{Math.round(bufferingProgress)}%</span>
+              </div>
+            )}
           </div>
         )}
 
